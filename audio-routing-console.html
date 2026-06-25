@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Routing Console</title>
+<style>
+  :root{
+    --bg:#101219; --bg-2:#0a0c12; --surface:#181b24; --surface-2:#20242f;
+    --line:#2b303c; --line-soft:#222633;
+    --text:#ECEAE3; --muted:#888ea0; --muted-2:#5c6172;
+    --agent:#F0A23A; --agent-soft:rgba(240,162,58,.13); --agent-line:rgba(240,162,58,.40);
+    --cust:#34C9C0;  --cust-soft:rgba(52,201,192,.13);  --cust-line:rgba(52,201,192,.40);
+    --ok:#5BD18A; --warn:#F0A23A; --err:#FF6B6B; --focus:#8AB4FF;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --r:14px; --r-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--sans); color:var(--text); line-height:1.5;
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(240,162,58,.07), transparent 60%),
+      radial-gradient(900px 500px at 92% -8%, rgba(52,201,192,.07), transparent 60%),
+      linear-gradient(180deg,var(--bg) 0%, var(--bg-2) 100%);
+    background-attachment:fixed;
+    min-height:100vh; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:34px 22px 80px}
+  a{color:inherit}
+
+  /* ---- header ---- */
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:9px}
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--cust);box-shadow:0 0 0 4px var(--cust-soft)}
+  h1{font-size:clamp(26px,4.4vw,40px); line-height:1.08; letter-spacing:-.02em; margin:14px 0 10px; font-weight:680}
+  h1 .warm{color:var(--agent)} h1 .cool{color:var(--cust)}
+  .lede{color:var(--muted); max-width:64ch; margin:0; font-size:15px}
+
+  .bar{
+    display:flex; flex-wrap:wrap; align-items:center; gap:14px;
+    margin-top:22px; padding:14px 16px; border:1px solid var(--line);
+    background:linear-gradient(180deg,var(--surface),rgba(24,27,36,.6)); border-radius:var(--r);
+  }
+  .status{display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12.5px; color:var(--muted)}
+  .status .led{width:9px;height:9px;border-radius:50%;background:var(--muted-2); transition:.3s}
+  .status.on .led{background:var(--ok); box-shadow:0 0 0 4px rgba(91,209,138,.18)}
+  .status.err .led{background:var(--err); box-shadow:0 0 0 4px rgba(255,107,107,.18)}
+  .status.busy .led{background:var(--warn); animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  .spacer{flex:1 1 auto}
+
+  button{font-family:var(--sans); cursor:pointer; border:none; color:inherit; background:none}
+  .btn{
+    display:inline-flex; align-items:center; gap:9px; padding:11px 18px; border-radius:var(--r-sm);
+    background:var(--text); color:#15171e; font-weight:640; font-size:14px; letter-spacing:.01em;
+    transition:transform .12s ease, filter .12s ease, opacity .12s;
+  }
+  .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.45; cursor:not-allowed}
+  .btn.ghost{background:transparent; color:var(--text); border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--surface-2); filter:none}
+  .btn svg{width:17px;height:17px}
+
+  /* ---- inventory ---- */
+  details.inv{margin-top:18px; border:1px solid var(--line); border-radius:var(--r); background:rgba(24,27,36,.5); overflow:hidden}
+  details.inv>summary{
+    list-style:none; cursor:pointer; padding:14px 16px; display:flex; align-items:center; gap:12px;
+    font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+  }
+  details.inv>summary::-webkit-details-marker{display:none}
+  .chev{margin-left:auto; transition:transform .2s; color:var(--muted-2)}
+  details.inv[open] .chev{transform:rotate(180deg)}
+  .count{font-family:var(--mono); color:var(--text); letter-spacing:0; text-transform:none}
+  .count .num{color:var(--cust)} .count .num.warm{color:var(--agent)}
+  .inv-body{padding:4px 16px 16px; display:grid; grid-template-columns:1fr 1fr; gap:18px 26px; border-top:1px solid var(--line-soft)}
+  .inv-col h3{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:14px 0 8px; font-weight:600}
+  .inv-col ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px}
+  .inv-col li{font-family:var(--mono); font-size:12.5px; color:var(--text); padding:7px 10px; background:var(--surface); border:1px solid var(--line-soft); border-radius:7px; display:flex; gap:9px; align-items:center; word-break:break-word}
+  .inv-col li .tick{width:5px; height:14px; border-radius:2px; flex:none}
+  .inv-col.in li .tick{background:var(--agent)} .inv-col.out li .tick{background:var(--cust)}
+  .inv-col .empty{color:var(--muted-2); font-style:italic; font-family:var(--sans); font-size:13px}
+
+  /* ---- channels ---- */
+  .channels{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px}
+  .card{position:relative; border:1px solid var(--line); border-radius:var(--r); background:linear-gradient(180deg,var(--surface),rgba(24,27,36,.55)); padding:20px 20px 22px; overflow:hidden}
+  .card::before{content:""; position:absolute; inset:0 auto 0 0; width:3px; background:var(--accent)}
+  .card.agent{--accent:var(--agent); --accent-soft:var(--agent-soft); --accent-line:var(--agent-line)}
+  .card.cust{--accent:var(--cust);  --accent-soft:var(--cust-soft);  --accent-line:var(--cust-line)}
+
+  .card-head{display:flex; align-items:baseline; gap:10px; margin-bottom:3px}
+  .chan-tag{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent)}
+  .chan-title{font-size:20px; font-weight:660; letter-spacing:-.01em}
+  .card .sub{color:var(--muted); font-size:13px; margin:0 0 16px}
+
+  .field{margin-bottom:14px}
+  .field>label{display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); margin-bottom:7px}
+  .seg{display:inline-flex; padding:3px; gap:3px; background:var(--bg); border:1px solid var(--line-soft); border-radius:9px}
+  .seg button{padding:7px 14px; border-radius:6px; font-size:13px; color:var(--muted); font-weight:560}
+  .seg button[aria-pressed="true"]{background:var(--surface-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--accent-line)}
+
+  select, input[type=file]{width:100%}
+  select{
+    appearance:none; font-family:var(--mono); font-size:13px; color:var(--text);
+    padding:11px 38px 11px 13px; border-radius:var(--r-sm); border:1px solid var(--line);
+    background:var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%23888ea0' stroke-width='1.6' stroke-linecap='round'/></svg>") no-repeat right 13px center;
+  }
+  select:disabled{opacity:.5}
+  .filebox{display:flex; align-items:center; gap:11px}
+  .file-btn{flex:none}
+  .file-name{font-family:var(--mono); font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .file-name.set{color:var(--text)}
+  input[type=file]{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden}
+  .hint{font-size:12px; color:var(--muted-2); margin:7px 0 0; line-height:1.45}
+  .mic-route-hint.route-ok, .mic-route-hint.route-warn{padding:10px 12px; border-radius:8px; margin-top:9px; display:flex; gap:9px; align-items:flex-start}
+  .mic-route-hint.route-ok{border:1px solid rgba(91,209,138,.35); background:rgba(91,209,138,.09); color:#9fe3bb}
+  .mic-route-hint.route-warn{border:1px solid rgba(240,162,58,.4); background:rgba(240,162,58,.1); color:#f3c688}
+  .mic-route-hint.route-ok::before{content:"●"; color:var(--ok); font-size:10px; line-height:1.6}
+  .mic-route-hint.route-warn::before{content:"!"; font-weight:800; line-height:1.45}
+
+  /* signal flow signature */
+  .flow{display:flex; align-items:center; gap:0; margin:4px 0 16px; padding:13px 14px; background:var(--bg); border:1px solid var(--line-soft); border-radius:var(--r-sm)}
+  .node{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:7px; white-space:nowrap}
+  .node .pip{width:8px;height:8px;border-radius:50%; background:var(--muted-2); transition:.25s}
+  .card.playing .node .pip{background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft)}
+  .line{flex:1; height:2px; margin:0 12px; position:relative; background:var(--line); border-radius:2px; overflow:hidden}
+  .line::after{content:""; position:absolute; top:0; left:-40%; width:40%; height:100%; background:linear-gradient(90deg,transparent,var(--accent),transparent); opacity:0; }
+  .card.playing .line{background:var(--accent-line)}
+  .card.playing .line::after{opacity:1; animation:flow 1.15s linear infinite}
+  @keyframes flow{to{left:110%}}
+
+  /* transport */
+  .transport{display:flex; align-items:center; gap:8px; margin-bottom:14px}
+  .tbtn{width:42px;height:42px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2); display:inline-flex; align-items:center; justify-content:center; color:var(--text); transition:.12s}
+  .tbtn:hover{border-color:var(--accent-line)} .tbtn:active{transform:translateY(1px)}
+  .tbtn[disabled]{opacity:.4; cursor:not-allowed}
+  .tbtn svg{width:18px;height:18px}
+  .tbtn.play{width:50px;height:50px; background:var(--accent); border-color:transparent; color:#15171e}
+  .tbtn.toggle[aria-pressed="true"]{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
+
+  .scrub{display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .track{flex:1; height:8px; background:var(--bg); border:1px solid var(--line-soft); border-radius:6px; position:relative; cursor:pointer}
+  .fill{position:absolute; inset:0 auto 0 0; width:0%; background:var(--accent); border-radius:6px 0 0 6px; pointer-events:none}
+  .time{min-width:42px; text-align:center; color:var(--text)}
+
+  .vol{display:flex; align-items:center; gap:11px; margin-top:14px; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+  input[type=range]{-webkit-appearance:none; appearance:none; height:4px; border-radius:3px; background:var(--line); flex:1; outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--surface)}
+  input[type=range]::-moz-range-thumb{width:15px; height:15px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--surface)}
+
+  /* mic monitor */
+  .monitor{margin-top:18px; border:1px solid var(--line); border-radius:var(--r); background:linear-gradient(180deg,var(--surface),rgba(24,27,36,.55)); padding:20px}
+  .monitor::before{display:none}
+  .mon-head{display:flex; align-items:baseline; gap:10px; margin-bottom:4px}
+  .mon-tag{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--agent)}
+  .mon-title{font-size:18px; font-weight:640}
+  .monitor .sub{color:var(--muted); font-size:13px; margin:0 0 16px}
+  .mon-row{display:grid; grid-template-columns:1fr auto; gap:14px; align-items:end}
+  @media(max-width:560px){.mon-row{grid-template-columns:1fr}}
+  .meter{margin-top:18px}
+  .meter-top{display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:7px}
+  .meter-top .db{color:var(--text)}
+  .segs{display:flex; gap:3px; height:22px}
+  .segs i{flex:1; border-radius:2px; background:var(--line); transition:background .05s linear, opacity .05s}
+  .segs i.seg-on-lo{background:var(--ok)} .segs i.seg-on-mid{background:var(--agent)} .segs i.seg-on-hi{background:var(--err)}
+  .meter.idle .segs i{opacity:.5}
+
+  /* notices */
+  .notice{margin-top:16px; padding:12px 14px; border-radius:var(--r-sm); font-size:13px; display:none; gap:10px; align-items:flex-start; line-height:1.5}
+  .notice svg{width:17px;height:17px;flex:none;margin-top:1px}
+  .notice.show{display:flex}
+  .notice.warn{background:rgba(240,162,58,.1); border:1px solid rgba(240,162,58,.3); color:#f3c688}
+  .notice.err{background:rgba(255,107,107,.1); border:1px solid rgba(255,107,107,.3); color:#ffb3b3}
+
+  /* master transport */
+  .master{display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px; margin-top:18px; padding:16px 18px; border:1px solid var(--line); border-radius:var(--r); background:linear-gradient(180deg,var(--surface),rgba(24,27,36,.55))}
+  .master-label{font-size:14px; color:var(--muted); display:flex; align-items:center; gap:11px; flex:1 1 240px}
+  .master-label .mtag{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--text); padding:5px 10px; border:1px solid var(--line); border-radius:6px; white-space:nowrap; background:linear-gradient(180deg,var(--agent-soft),var(--cust-soft))}
+  .master-actions{display:flex; gap:10px}
+  .master-actions .btn svg{width:16px;height:16px}
+  @media(max-width:560px){ .master-actions{flex:1 1 100%} .master-actions .btn{flex:1; justify-content:center} }
+
+  .foot{margin-top:30px; font-family:var(--mono); font-size:11px; color:var(--muted-2); letter-spacing:.04em; text-align:center; line-height:1.7}
+  kbd{font-family:var(--mono); background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:11px; color:var(--text)}
+
+  :focus-visible{outline:2px solid var(--focus); outline-offset:2px; border-radius:4px}
+
+  @media(max-width:780px){
+    .channels{grid-template-columns:1fr}
+    .inv-body{grid-template-columns:1fr}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important; transition:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow"><span class="dot"></span> Audio Routing Console</div>
+    <h1>Patch the <span class="warm">agent</span> and <span class="cool">customer</span> recordings to separate devices.</h1>
+    <p class="lede">A self-contained demo for two-channel call audio. Send the agent recording to a virtual microphone the call app can hear, and the customer recording to your speakers — each on the output device you choose.</p>
+
+    <div class="bar">
+      <button id="enable" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+        Enable audio devices
+      </button>
+      <button id="rescan" class="btn ghost" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Rescan
+      </button>
+      <div class="spacer"></div>
+      <div id="status" class="status"><span class="led"></span><span id="statusText">Devices locked — enable access to begin</span></div>
+    </div>
+
+    <div id="secNotice" class="notice warn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>This page isn't running in a secure context, so the browser may block device access. Open it from <kbd>https://</kbd>, from <kbd>localhost</kbd>, or directly as a local file in Chrome or Edge.</span>
+    </div>
+
+    <div id="labelNote" class="notice warn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Devices are detected, but your browser is hiding their names. Choose <strong>Allow</strong> when asked for microphone access, then click <strong>Rescan</strong>. If you opened this file by double-clicking it, some browsers withhold names on <kbd>file://</kbd> — serve it from <kbd>http://localhost</kbd> or <kbd>https://</kbd>, or use Chrome/Edge, to see real device names.</span>
+    </div>
+  </header>
+
+  <!-- DEVICE INVENTORY -->
+  <details class="inv" id="inv">
+    <summary>
+      Device inventory
+      <span class="count" id="invCount"><span class="num warm">0</span> inputs · <span class="num">0</span> outputs</span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </summary>
+    <div class="inv-body">
+      <div class="inv-col in">
+        <h3>Microphones / inputs</h3>
+        <ul id="invIn"><li class="empty">Enable access to list inputs.</li></ul>
+      </div>
+      <div class="inv-col out">
+        <h3>Speakers / outputs</h3>
+        <ul id="invOut"><li class="empty">Enable access to list outputs.</li></ul>
+      </div>
+    </div>
+  </details>
+
+  <!-- CHANNELS -->
+  <div class="channels">
+
+    <!-- AGENT -->
+    <section class="card agent" id="card-agent">
+      <div class="card-head">
+        <span class="chan-tag">CH 1</span>
+        <span class="chan-title">Agent</span>
+      </div>
+      <p class="sub">Plays the agent recording so a call app hears it as the agent's microphone. Pick the mic below — with a loopback device like BlackHole the recording is delivered to it automatically.</p>
+
+      <div class="field">
+        <label>Recording</label>
+        <div class="filebox">
+          <label class="btn ghost file-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Choose file
+            <input type="file" accept="audio/*" class="file-input">
+          </label>
+          <span class="file-name">No file selected</span>
+        </div>
+      </div>
+
+      <div class="flow" aria-hidden="true">
+        <span class="node"><span class="pip"></span>Source</span>
+        <span class="line"></span>
+        <span class="node">Mic<span class="pip"></span></span>
+      </div>
+
+      <div class="field">
+        <label>Agent microphone — your call app's input</label>
+        <select class="dev-mic" disabled><option>Enable audio devices first</option></select>
+        <p class="hint mic-route-hint">Pick the microphone your softphone or meeting app will use for the agent.</p>
+      </div>
+
+      <div class="transport">
+        <button class="tbtn play btn-play" disabled aria-label="Play agent recording">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        </button>
+        <button class="tbtn btn-stop" disabled aria-label="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        </button>
+        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <div class="scrub">
+          <span class="time t-cur">0:00</span>
+          <div class="track"><div class="fill"></div></div>
+          <span class="time t-dur">0:00</span>
+        </div>
+      </div>
+
+      <div class="vol">
+        Level
+        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Agent volume">
+      </div>
+
+      <audio class="player" preload="metadata"></audio>
+      <div class="notice err sink-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+      </div>
+    </section>
+
+    <!-- CUSTOMER -->
+    <section class="card cust" id="card-cust">
+      <div class="card-head">
+        <span class="chan-tag">CH 2</span>
+        <span class="chan-title">Customer</span>
+      </div>
+      <p class="sub">Plays the customer recording to whatever you want to listen on — your speakers, headset, or a second monitoring output.</p>
+
+      <div class="field">
+        <label>Recording</label>
+        <div class="filebox">
+          <label class="btn ghost file-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Choose file
+            <input type="file" accept="audio/*" class="file-input">
+          </label>
+          <span class="file-name">No file selected</span>
+        </div>
+      </div>
+
+      <div class="flow" aria-hidden="true">
+        <span class="node"><span class="pip"></span>Source</span>
+        <span class="line"></span>
+        <span class="node">Output<span class="pip"></span></span>
+      </div>
+
+      <div class="field">
+        <label>Output device — speakers / headset</label>
+        <select class="dev-out" disabled><option>Enable audio devices first</option></select>
+        <p class="hint">Pick the device you're monitoring on so the customer side stays separate from the agent injection.</p>
+      </div>
+
+      <div class="transport">
+        <button class="tbtn play btn-play" disabled aria-label="Play customer recording">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        </button>
+        <button class="tbtn btn-stop" disabled aria-label="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        </button>
+        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <div class="scrub">
+          <span class="time t-cur">0:00</span>
+          <div class="track"><div class="fill"></div></div>
+          <span class="time t-dur">0:00</span>
+        </div>
+      </div>
+
+      <div class="vol">
+        Level
+        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Customer volume">
+      </div>
+
+      <audio class="player" preload="metadata"></audio>
+      <div class="notice err sink-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- MASTER TRANSPORT -->
+  <div class="master" id="master">
+    <div class="master-label">
+      <span class="mtag">Both channels</span>
+      Play the agent and customer recordings together, in sync.
+    </div>
+    <div class="master-actions">
+      <button id="playBoth" class="btn" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        Play both
+      </button>
+      <button id="stopBoth" class="btn ghost" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        Stop both
+      </button>
+    </div>
+  </div>
+
+  <!-- MIC MONITOR -->
+  <section class="monitor" id="monitor">
+    <div class="mon-head">
+      <span class="mon-tag">Verify</span>
+      <span class="mon-title">Microphone monitor</span>
+    </div>
+    <p class="sub">Listen to any microphone's live level — including the cable's mic side — to confirm the agent recording is reaching the input your call app will use.</p>
+
+    <div class="mon-row">
+      <div class="field" style="margin:0">
+        <label>Microphone to monitor</label>
+        <select id="monDev" disabled><option>Enable audio devices first</option></select>
+      </div>
+      <button id="monBtn" class="btn ghost" disabled style="height:44px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        Start monitor
+      </button>
+    </div>
+
+    <div class="meter idle" id="meter">
+      <div class="meter-top"><span>Input level</span><span class="db" id="dbVal">—</span></div>
+      <div class="segs" id="segs"></div>
+    </div>
+    <div class="notice err" id="monNote">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="monNoteText"></span>
+    </div>
+  </section>
+
+  <p class="foot">
+    Runs entirely in your browser · no uploads, no dependencies<br>
+    Space-bar plays the focused channel · output switching needs Chrome or Edge
+  </p>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+  const statusEl = $("#status"), statusText = $("#statusText");
+  const enableBtn = $("#enable"), rescanBtn = $("#rescan");
+  const SUPPORTS_SINK = ("setSinkId" in HTMLMediaElement.prototype);
+
+  function setStatus(state, text){
+    statusEl.className = "status" + (state ? " "+state : "");
+    statusText.textContent = text;
+  }
+  function fmt(t){
+    if(!isFinite(t)||t<0) t=0;
+    const m=Math.floor(t/60), s=Math.floor(t%60);
+    return m+":"+String(s).padStart(2,"0");
+  }
+
+  // Secure-context check (getUserMedia needs it; file:// is OK in Chromium)
+  if(!window.isSecureContext && location.protocol !== "file:"){
+    $("#secNotice").classList.add("show");
+  }
+
+  /* ---------- Channel controller ---------- */
+
+  // Recognise loopback / virtual-cable devices so an agent mic can be paired
+  // with the output that actually feeds it. True loopbacks only — this avoids
+  // mis-pairing devices like Krisp, whose virtual mic is NOT wired to its
+  // virtual speaker.
+  const LOOPBACK_RE = /(blackhole|black hole|vb-?audio|vb-?cable|cable\s*(in|out)|loopback|soundflower|virtual.*(cable|loopback)|aggregate)/i;
+  const isLoopback = l => LOOPBACK_RE.test(l||"");
+  function matchOutputForMic(mic, outputs){
+    if(!mic) return null;
+    let m = outputs.find(o=>o.groupId && mic.groupId && o.groupId===mic.groupId);
+    if(m) return m;
+    if(isLoopback(mic.label)){
+      if(/cable\s*output/i.test(mic.label)){ m = outputs.find(o=>/cable\s*input/i.test(o.label||"")); if(m) return m; }
+      const key = (mic.label||"").toLowerCase().match(/blackhole|soundflower|loopback|vb-?cable|vb-?audio/);
+      if(key){ m = outputs.find(o=>isLoopback(o.label) && (o.label||"").toLowerCase().includes(key[0])); if(m) return m; }
+    }
+    return null;
+  }
+
+  function Channel(root, onChange){
+    const audio = $(".player", root);
+    const sel   = $(".dev-out", root);     // Customer channel only (speakers)
+    const micSel= $(".dev-mic", root);     // Agent channel only (microphones)
+    const micHint = $(".mic-route-hint", root);
+    const play  = $(".btn-play", root);
+    const stop  = $(".btn-stop", root);
+    const loop  = $(".btn-loop", root);
+    const vol   = $(".vol-range", root);
+    const track = $(".track", root);
+    const fill  = $(".fill", root);
+    const tCur  = $(".t-cur", root);
+    const tDur  = $(".t-dur", root);
+    const fileInput = $(".file-input", root);
+    const fileName  = $(".file-name", root);
+    const sinkNote = $(".sink-note", root);
+
+    let objUrl = null;          // current blob URL (revoke on swap)
+    let hasSource = false;
+    let loopOn = false;
+    let lastOutputs = [];
+    const notify = ()=>{ if(onChange) onChange(); };
+
+    // Output device playback is routed to. Customer: the chosen speaker.
+    // Agent: the output that feeds the chosen mic (a loopback) if one exists,
+    // otherwise "" which means the browser's default output.
+    function currentSink(){
+      if(micSel){
+        const mic = (micSel._devs||[]).find(d=>d.deviceId===micSel.value);
+        const match = mic ? matchOutputForMic(mic, lastOutputs) : null;
+        return match ? match.deviceId : "";
+      }
+      return sel ? sel.value : "";
+    }
+
+    function setSource(url, label){
+      if(objUrl){ URL.revokeObjectURL(objUrl); objUrl=null; }
+      objUrl = url;
+      audio.src = url;
+      audio.load();
+      hasSource = true;
+      play.disabled = false; stop.disabled = false;
+      fileName.textContent = label;
+      fileName.classList.add("set");
+      notify();
+    }
+
+    fileInput.addEventListener("change", e=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      setSource(URL.createObjectURL(f), f.name);
+      resetProgress();
+    });
+
+    // route playback to the active output (loopback for the agent, speaker for the customer)
+    async function applySink(){
+      if(!SUPPORTS_SINK) return;
+      const id = currentSink();
+      try{
+        await audio.setSinkId(id || "");
+        sinkNote.classList.remove("show");
+      }catch(err){
+        sinkNote.querySelector("span").textContent =
+          "Couldn't route to that device ("+(err.name||"error")+"). It may be in use — try another.";
+        sinkNote.classList.add("show");
+      }
+    }
+    if(sel) sel.addEventListener("change", applySink);
+
+    // agent: when the mic changes, route to the output that feeds it (a loopback)
+    // and explain where the audio is actually going
+    function updateMicRoute(){
+      if(!micSel || !micHint) return;
+      const mic = (micSel._devs||[]).find(d=>d.deviceId===micSel.value);
+      const match = mic ? matchOutputForMic(mic, lastOutputs) : null;
+      micHint.style.color = "";
+      if(match){
+        micHint.textContent = "Playing into \u201C"+(match.label||"output")+"\u201D, which feeds this mic. Pick the same device as the input in your call app / System Settings, and use the monitor below to confirm.";
+        micHint.className = "hint mic-route-hint route-ok";
+      } else {
+        micHint.textContent = "This mic isn't a loopback, so the recording plays on your default output (speaker) and won't show as system mic activity. Install a loopback like BlackHole, then select it here.";
+        micHint.className = "hint mic-route-hint route-warn";
+      }
+    }
+    if(micSel) micSel.addEventListener("change", ()=>{ updateMicRoute(); applySink(); });
+
+    // transport
+    play.addEventListener("click", async ()=>{
+      if(!hasSource) return;
+      if(audio.paused){ await applySink(); audio.play().catch(()=>{}); }
+      else { audio.pause(); }
+    });
+    stop.addEventListener("click", ()=>{ audio.pause(); audio.currentTime=0; });
+
+    function toggleLoop(){ loopOn=!loopOn; audio.loop=loopOn; loop.setAttribute("aria-pressed",loopOn); }
+    loop.addEventListener("click", toggleLoop);
+
+    vol.addEventListener("input", ()=>{ audio.volume = vol.value/100; });
+
+    function setPlayIcon(playing){
+      play.innerHTML = playing
+        ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>';
+    }
+    function pauseUI(){ root.classList.remove("playing"); setPlayIcon(false); }
+    audio.addEventListener("play", ()=>{ root.classList.add("playing"); setPlayIcon(true); });
+    audio.addEventListener("pause", pauseUI);
+    audio.addEventListener("ended", ()=>{ if(!loopOn){ pauseUI(); } });
+
+    function resetProgress(){ fill.style.width="0%"; tCur.textContent="0:00"; tDur.textContent=fmt(audio.duration||0); }
+    audio.addEventListener("loadedmetadata", ()=>{ tDur.textContent = fmt(audio.duration); applySink(); });
+    audio.addEventListener("timeupdate", ()=>{
+      const d = audio.duration||0;
+      fill.style.width = d ? (audio.currentTime/d*100)+"%" : "0%";
+      tCur.textContent = fmt(audio.currentTime);
+    });
+
+    // seek
+    function seek(e){
+      const r = track.getBoundingClientRect();
+      const x = ((e.touches?e.touches[0].clientX:e.clientX) - r.left)/r.width;
+      if(audio.duration) audio.currentTime = Math.max(0,Math.min(1,x))*audio.duration;
+    }
+    track.addEventListener("click", seek);
+
+    // build a <select> from a device list, remembering the list for later lookup
+    function fillSelect(s, list, kind){
+      if(!s) return;
+      const prev = s.value;
+      s._devs = list;
+      s.innerHTML = "";
+      if(!list.length){
+        s.innerHTML = '<option value="">No '+kind+'s found</option>'; s.disabled = true; return;
+      }
+      list.forEach((d,i)=>{
+        const o=document.createElement("option");
+        o.value=d.deviceId;
+        o.textContent=d.label||((kind==="output"?"Output":"Microphone")+" "+(i+1)+" (name hidden)");
+        s.appendChild(o);
+      });
+      s.disabled = false;
+      if(prev && list.some(d=>d.deviceId===prev)) s.value=prev;
+    }
+
+    return {
+      audio,
+      playBtn: play,
+      hasSource: ()=>hasSource,
+      isPlaying: ()=>!audio.paused,
+      prepare: applySink,
+      pause: ()=>audio.pause(),
+      stopReset: ()=>{ audio.pause(); audio.currentTime=0; },
+      populate(inputs, outputs){
+        lastOutputs = outputs;
+        fillSelect(sel, outputs, "output");
+        fillSelect(micSel, inputs, "microphone");
+        if(micSel) updateMicRoute();
+        if(!SUPPORTS_SINK){
+          if(sel) sel.disabled = true;
+          sinkNote.classList.add("show");
+        } else {
+          applySink();
+        }
+      }
+    };
+  }
+
+  const agent = Channel($("#card-agent"), ()=>masterState());
+  const cust  = Channel($("#card-cust"),  ()=>masterState());
+
+  /* ---------- master transport (play both) ---------- */
+  const playBothBtn = $("#playBoth"), stopBothBtn = $("#stopBoth");
+  const PLAY_SVG  = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>';
+  const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  function masterState(){
+    const has = agent.hasSource() || cust.hasSource();
+    const playing = agent.isPlaying() || cust.isPlaying();
+    if(playBothBtn){
+      playBothBtn.disabled = !has;
+      playBothBtn.innerHTML = (playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both");
+    }
+    if(stopBothBtn) stopBothBtn.disabled = !has;
+  }
+  async function playBoth(){
+    if(agent.isPlaying() || cust.isPlaying()){ agent.pause(); cust.pause(); masterState(); return; }
+    const a = agent.hasSource(), c = cust.hasSource();
+    // apply both output routes first, then fire both plays back-to-back for tight sync
+    await Promise.all([ a?agent.prepare():null, c?cust.prepare():null ]);
+    if(a) agent.audio.play().catch(()=>{});
+    if(c) cust.audio.play().catch(()=>{});
+    masterState();
+  }
+  if(playBothBtn) playBothBtn.addEventListener("click", playBoth);
+  if(stopBothBtn) stopBothBtn.addEventListener("click", ()=>{ agent.stopReset(); cust.stopReset(); masterState(); });
+  [agent, cust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, masterState)));
+  masterState();
+
+  /* ---------- Microphone monitor ---------- */
+  const monDev = $("#monDev"), monBtn = $("#monBtn"), meter = $("#meter"),
+        dbVal = $("#dbVal"), segsWrap = $("#segs"), monNote = $("#monNote"), monNoteText = $("#monNoteText");
+  const SEG_N = 28;
+  for(let i=0;i<SEG_N;i++){ const s=document.createElement("i"); segsWrap.appendChild(s); }
+  const segEls = $$("#segs i");
+
+  let monStream=null, monCtx=null, monRaf=null, peak=0;
+
+  function paintMeter(level){ // level 0..1 (already smoothed)
+    const lit = Math.round(level*SEG_N);
+    segEls.forEach((el,i)=>{
+      el.className = "";
+      if(i<lit){
+        if(i < SEG_N*0.6) el.classList.add("seg-on-lo");
+        else if(i < SEG_N*0.85) el.classList.add("seg-on-mid");
+        else el.classList.add("seg-on-hi");
+      }
+    });
+    const db = level>0.0008 ? (20*Math.log10(level)).toFixed(1)+" dB" : "—";
+    dbVal.textContent = db;
+  }
+
+  async function startMon(){
+    if(!monDev.value){ return; }
+    try{
+      monStream = await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:monDev.value}, echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+      monCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const src = monCtx.createMediaStreamSource(monStream);
+      const an = monCtx.createAnalyser(); an.fftSize=1024; an.smoothingTimeConstant=0.6;
+      src.connect(an);
+      const data = new Float32Array(an.fftSize);
+      meter.classList.remove("idle");
+      monNote.classList.remove("show");
+      monBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg> Stop monitor';
+      monBtn.classList.add("running");
+
+      const loop = ()=>{
+        an.getFloatTimeDomainData(data);
+        let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]*data[i];
+        const rms = Math.sqrt(sum/data.length);
+        // map rms (~0..0.5) to 0..1 with a little headroom + smoothing/decay
+        const level = Math.min(1, rms*3.2);
+        peak = Math.max(level, peak*0.92);
+        paintMeter(peak);
+        monRaf = requestAnimationFrame(loop);
+      };
+      loop();
+    }catch(err){
+      monNoteText.textContent = describeGUMError(err);
+      monNote.classList.add("show");
+      stopMon();
+    }
+  }
+  function stopMon(){
+    if(monRaf) cancelAnimationFrame(monRaf), monRaf=null;
+    if(monStream){ monStream.getTracks().forEach(t=>t.stop()); monStream=null; }
+    if(monCtx){ monCtx.close().catch(()=>{}); monCtx=null; }
+    peak=0; paintMeter(0); meter.classList.add("idle"); dbVal.textContent="—";
+    monBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg> Start monitor';
+    monBtn.classList.remove("running");
+  }
+  monBtn.addEventListener("click", ()=> monBtn.classList.contains("running") ? stopMon() : startMon());
+  monDev.addEventListener("change", ()=>{ if(monBtn.classList.contains("running")){ stopMon(); startMon(); } });
+
+  function describeGUMError(err){
+    const n = err && err.name;
+    if(n==="NotAllowedError") return "Microphone access was blocked. Allow it in the browser's site settings, then try again.";
+    if(n==="NotFoundError")  return "That microphone is no longer available. Rescan devices and pick another.";
+    if(n==="NotReadableError")return "The microphone is in use by another app. Close it and try again.";
+    return "Couldn't open that microphone ("+(n||"error")+").";
+  }
+
+  /* ---------- device enumeration ---------- */
+
+  // Browsers only expose device *names* while a mic capture is active (or, on
+  // http/https, for the rest of the session after one grant). On file:// the
+  // names disappear the moment the track stops. So: if any name is blank, we
+  // briefly (re)open the mic to read the labels, then release it. No second
+  // prompt is shown once permission has already been granted.
+  async function getDevicesWithLabels(){
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    const audio = devices.filter(d=>d.kind==="audioinput"||d.kind==="audiooutput");
+    const missing = audio.length===0 || audio.some(d=>!d.label);
+    if(missing){
+      let s=null;
+      try{
+        s = await navigator.mediaDevices.getUserMedia({audio:true});
+        devices = await navigator.mediaDevices.enumerateDevices();
+      }catch(e){ /* keep what we have; refreshDevices() will flag it */ }
+      finally{ if(s) s.getTracks().forEach(t=>t.stop()); }
+    }
+    return devices;
+  }
+
+  async function refreshDevices(){
+    const devices = await getDevicesWithLabels();
+    const inputs  = devices.filter(d=>d.kind==="audioinput");
+    const outputs = devices.filter(d=>d.kind==="audiooutput");
+    const namesHidden = inputs.concat(outputs).some(d=>!d.label);
+
+    // inventory
+    $("#invCount").innerHTML =
+      '<span class="num warm">'+inputs.length+'</span> input'+(inputs.length===1?"":"s")+
+      ' · <span class="num">'+outputs.length+'</span> output'+(outputs.length===1?"":"s");
+
+    const renderList = (el, list, fallbackPrefix)=>{
+      el.innerHTML="";
+      if(!list.length){ el.innerHTML='<li class="empty">None detected.</li>'; return; }
+      list.forEach((d,i)=>{
+        const li=document.createElement("li");
+        li.innerHTML='<span class="tick"></span>'+(d.label||fallbackPrefix+" "+(i+1)+" (name hidden)");
+        el.appendChild(li);
+      });
+    };
+    renderList($("#invIn"), inputs, "Microphone");
+    renderList($("#invOut"), outputs, "Output");
+
+    // channels (outputs + inputs) + monitor (inputs)
+    agent.populate(inputs, outputs);
+    cust.populate(inputs, outputs);
+
+    const prevMon = monDev.value;
+    monDev.innerHTML="";
+    if(!inputs.length){
+      monDev.innerHTML='<option value="">No microphones found</option>'; monDev.disabled=true; monBtn.disabled=true;
+    } else {
+      inputs.forEach((d,i)=>{ const o=document.createElement("option"); o.value=d.deviceId; o.textContent=d.label||("Microphone "+(i+1)+" (name hidden)"); monDev.appendChild(o); });
+      monDev.disabled=false; monBtn.disabled=false;
+      if(prevMon && inputs.some(d=>d.deviceId===prevMon)) monDev.value=prevMon;
+    }
+
+    // surface the hidden-names situation
+    $("#labelNote").classList.toggle("show", namesHidden);
+
+    const sinkSuffix = SUPPORTS_SINK ? "" : " · output switching not supported in this browser";
+    if(namesHidden){
+      setStatus("err", "Devices found, but names are hidden — allow mic access / use http or https");
+    } else {
+      setStatus("on", inputs.length+" inputs · "+outputs.length+" outputs ready"+sinkSuffix);
+    }
+  }
+
+  async function enable(){
+    setStatus("busy", "Requesting access…");
+    enableBtn.disabled = true;
+    let stream = null;
+    try{
+      // prompt for permission AND keep the track open through the first scan,
+      // so device names are guaranteed to be readable
+      stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      await refreshDevices();
+      rescanBtn.disabled = false;
+      enableBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Devices enabled';
+      navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
+    }catch(err){
+      enableBtn.disabled = false;
+      setStatus("err", describeGUMError(err));
+    }finally{
+      if(stream) stream.getTracks().forEach(t=>t.stop());
+    }
+  }
+  enableBtn.addEventListener("click", enable);
+  rescanBtn.addEventListener("click", ()=>{ setStatus("busy","Rescanning…"); refreshDevices(); });
+
+  // space-bar plays the channel whose controls are focused
+  document.addEventListener("keydown", e=>{
+    if(e.code!=="Space") return;
+    const card = document.activeElement && document.activeElement.closest && document.activeElement.closest(".card");
+    if(card){ e.preventDefault(); (card.id==="card-agent"?agent:cust).playBtn.click(); }
+  });
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    enableBtn.disabled = true;
+    setStatus("err","This browser doesn't expose audio devices to web pages.");
+  }
+})();
+</script>
+</body>
+</html>
