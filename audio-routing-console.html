@@ -189,9 +189,11 @@
   .master{display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px; margin-top:18px; padding:16px 18px; border:1px solid var(--line); border-radius:var(--r); background:linear-gradient(180deg,var(--surface),rgba(24,27,36,.55))}
   .master-label{font-size:14px; color:var(--muted); display:flex; align-items:center; gap:11px; flex:1 1 240px}
   .master-label .mtag{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--text); padding:5px 10px; border:1px solid var(--line); border-radius:6px; white-space:nowrap; background:linear-gradient(180deg,var(--agent-soft),var(--cust-soft))}
-  .master-actions{display:flex; gap:10px}
+  .master-actions{display:flex; gap:10px; align-items:center}
   .master-actions .btn svg{width:16px;height:16px}
-  @media(max-width:560px){ .master-actions{flex:1 1 100%} .master-actions .btn{flex:1; justify-content:center} }
+  .vt-delay{font-size:13px; padding:0 6px 0 2px; white-space:nowrap}
+  .vt-delay .vt-secs{font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:2px 6px; margin-left:2px}
+  @media(max-width:560px){ .master-actions{flex:1 1 100%; flex-wrap:wrap} .master-actions .btn{flex:1; justify-content:center} .vt-delay{flex:1 1 100%; justify-content:center} }
 
   .foot{margin-top:30px; font-family:var(--mono); font-size:11px; color:var(--muted-2); letter-spacing:.04em; text-align:center; line-height:1.7}
   kbd{font-family:var(--mono); background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:11px; color:var(--text)}
@@ -410,6 +412,7 @@
       Play the agent and customer recordings together, in sync.
     </div>
     <div class="master-actions">
+      <label class="checkbox vt-delay"><input type="checkbox" id="vtDelay"> VT Delay <span class="vt-secs">15s</span></label>
       <button id="playBoth" class="btn" disabled>
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
         Play both
@@ -455,6 +458,24 @@
   }
 
   /* ---------- Channel controller ---------- */
+
+  // A near-silent, seamlessly-looping tone, played on an output device to keep
+  // that output stream open during the VT delay. Pure digital silence / zero
+  // volume can be optimised away and won't show the device as in-use, so this
+  // uses a real but inaudible signal (~-75 dB) at normal volume.
+  function silentWavUrl(seconds){
+    const sr=44100, n=Math.floor(seconds*sr), freq=60, amp=0.00018;
+    const buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+    const str=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+    str(0,"RIFF"); v.setUint32(4,36+n*2,true); str(8,"WAVE"); str(12,"fmt ");
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true);
+    v.setUint16(34,16,true); str(36,"data"); v.setUint32(40,n*2,true);
+    let o=44;
+    for(let i=0;i<n;i++){ v.setInt16(o, Math.round(Math.sin(2*Math.PI*freq*(i/sr))*amp*0x7fff), true); o+=2; }
+    return URL.createObjectURL(new Blob([buf],{type:"audio/wav"}));
+  }
+  const SILENCE_URL = silentWavUrl(1);
 
   // Recognise loopback / virtual-cable devices so an agent mic can be paired
   // with the output that actually feeds it. True loopbacks only — this avoids
@@ -543,6 +564,18 @@
     }
     if(sel) sel.addEventListener("change", applySink);
 
+    // silent warm-up: keep this channel's output device stream open (used during VT delay)
+    const silent = new Audio(SILENCE_URL);
+    silent.loop = true; silent.preload = "auto"; silent.volume = 1;
+    async function warm(on){
+      if(on){
+        try{ if(SUPPORTS_SINK) await silent.setSinkId(currentSink() || ""); }catch(e){}
+        try{ silent.currentTime = 0; await silent.play(); }catch(e){}
+      } else {
+        silent.pause();
+      }
+    }
+
     // agent: when the mic changes, route to the output that feeds it (a loopback)
     // and explain where the audio is actually going
     function updateMicRoute(){
@@ -624,6 +657,7 @@
       hasSource: ()=>hasSource,
       isPlaying: ()=>!audio.paused,
       prepare: applySink,
+      warm,
       pause: ()=>audio.pause(),
       stopReset: ()=>{ audio.pause(); audio.currentTime=0; },
       populate(inputs, outputs){
@@ -644,11 +678,17 @@
   const agent = Channel($("#card-agent"), ()=>masterState());
   const cust  = Channel($("#card-cust"),  ()=>masterState());
 
-  /* ---------- master transport (play both) ---------- */
-  const playBothBtn = $("#playBoth"), stopBothBtn = $("#stopBoth");
+  /* ---------- master transport (play both, with optional VT delay) ---------- */
+  const playBothBtn = $("#playBoth"), stopBothBtn = $("#stopBoth"), vtDelayChk = $("#vtDelay");
+  const VT_DELAY_MS = 15000;          // VT Delay duration
   const PLAY_SVG  = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>';
   const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  const CLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+  let vtTimer = null, vtTick = null;  // pending delayed-start timeout + countdown interval
+
   function masterState(){
+    if(vtTimer) return;               // during the countdown, the button label is owned by startVT
     const has = agent.hasSource() || cust.hasSource();
     const playing = agent.isPlaying() || cust.isPlaying();
     if(playBothBtn){
@@ -657,17 +697,49 @@
     }
     if(stopBothBtn) stopBothBtn.disabled = !has;
   }
-  async function playBoth(){
-    if(agent.isPlaying() || cust.isPlaying()){ agent.pause(); cust.pause(); masterState(); return; }
-    const a = agent.hasSource(), c = cust.hasSource();
-    // apply both output routes first, then fire both plays back-to-back for tight sync
-    await Promise.all([ a?agent.prepare():null, c?cust.prepare():null ]);
-    if(a) agent.audio.play().catch(()=>{});
-    if(c) cust.audio.play().catch(()=>{});
+
+  function cancelVT(){
+    if(vtTimer){ clearTimeout(vtTimer); vtTimer=null; }
+    if(vtTick){ clearInterval(vtTick); vtTick=null; }
+    agent.warm(false); cust.warm(false);   // stop silence on the outputs
+    stopAgentMon();                          // close the mic stream opened for the countdown
     masterState();
   }
+
+  function startVT(a, c){
+    let remaining = Math.round(VT_DELAY_MS/1000);
+    const paint = ()=>{ if(playBothBtn) playBothBtn.innerHTML = CLOCK_SVG+" Cancel · "+remaining+"s"; };
+    paint();
+    if(stopBothBtn) stopBothBtn.disabled = false;
+    vtTick = setInterval(()=>{ remaining--; if(remaining>0) paint(); }, 1000);
+    vtTimer = setTimeout(()=>{
+      clearInterval(vtTick); vtTick=null; vtTimer=null;
+      agent.warm(false); cust.warm(false);   // hand the outputs over to the recordings
+      if(a) agent.audio.play().catch(()=>{});
+      if(c) cust.audio.play().catch(()=>{});
+      masterState();
+    }, VT_DELAY_MS);
+  }
+
+  async function playBoth(){
+    if(vtTimer){ cancelVT(); return; }                       // pressing during countdown cancels
+    if(agent.isPlaying() || cust.isPlaying()){ agent.pause(); cust.pause(); masterState(); return; }
+    const a = agent.hasSource(), c = cust.hasSource();
+    if(!a && !c) return;
+    await Promise.all([ a?agent.prepare():null, c?cust.prepare():null ]);  // route outputs first
+    if(vtDelayChk && vtDelayChk.checked){
+      startAgentMon();                // open the mic stream(s) now (respects "No ongoing call")
+      agent.warm(true);               // play inaudible signal so the agent output stream is live
+      cust.warm(true);                // play inaudible signal so the selected speaker stream is live
+      startVT(a, c);                  // ...but hold the recordings back by the delay
+    } else {
+      if(a) agent.audio.play().catch(()=>{});
+      if(c) cust.audio.play().catch(()=>{});
+      masterState();
+    }
+  }
   if(playBothBtn) playBothBtn.addEventListener("click", playBoth);
-  if(stopBothBtn) stopBothBtn.addEventListener("click", ()=>{ agent.stopReset(); cust.stopReset(); masterState(); });
+  if(stopBothBtn) stopBothBtn.addEventListener("click", ()=>{ cancelVT(); agent.stopReset(); cust.stopReset(); masterState(); });
   [agent, cust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, masterState)));
   masterState();
 
