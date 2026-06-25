@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Audio Routing Console</title>
+<title>Demo Platform — AA, SA, VT</title>
 <style>
   :root{
     --bg:#101219; --bg-2:#0a0c12; --surface:#181b24; --surface-2:#20242f;
@@ -34,7 +34,7 @@
   .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:9px}
   .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--cust);box-shadow:0 0 0 4px var(--cust-soft)}
   h1{font-size:clamp(26px,4.4vw,40px); line-height:1.08; letter-spacing:-.02em; margin:14px 0 10px; font-weight:680}
-  h1 .warm{color:var(--agent)} h1 .cool{color:var(--cust)}
+  h1 .warm{color:var(--agent)} h1 .cool{color:var(--cust)} h1 .vt{color:var(--focus)}
   .lede{color:var(--muted); max-width:64ch; margin:0; font-size:15px}
 
   .bar{
@@ -213,9 +213,9 @@
 <div class="wrap">
 
   <header>
-    <div class="eyebrow"><span class="dot"></span> Audio Routing Console</div>
-    <h1>Patch the <span class="warm">agent</span> and <span class="cool">customer</span> recordings to separate devices.</h1>
-    <p class="lede">A self-contained demo for two-channel call audio. Send the agent recording to a virtual microphone the call app can hear, and the customer recording to your speakers — each on the output device you choose.</p>
+    <div class="eyebrow"><span class="dot"></span> Feature Demo</div>
+    <h1>Demo Platform for <span class="warm">AA</span>, <span class="cool">SA</span>, and <span class="vt">VT</span> features</h1>
+    <p class="lede">This platform is for demoing SA, AA, and VT features. As a microphone, select <strong>VB-Cable</strong> (or another loopback device); as a speaker, select <strong>Krisp Speaker</strong>. In Krisp, select the loopback device as the microphone.</p>
 
     <div class="bar">
       <button id="enable" class="btn">
@@ -269,7 +269,7 @@
         <span class="chan-tag">CH 1</span>
         <span class="chan-title">Agent</span>
       </div>
-      <p class="sub">Plays the agent recording so a call app hears it as the agent's microphone. Pick the mic below — with a loopback device like BlackHole the recording is delivered to it automatically.</p>
+      <p class="sub">Plays the agent recording so a call app hears it as the agent's microphone. Pick the mic below — with a loopback device like VB-Cable the recording is delivered to it automatically.</p>
 
       <div class="field">
         <label>Recording</label>
@@ -587,7 +587,7 @@
         micHint.textContent = "Playing into \u201C"+(match.label||"output")+"\u201D, which feeds this mic. Pick the same device as the input in your call app or System Settings.";
         micHint.className = "hint mic-route-hint route-ok";
       } else {
-        micHint.textContent = "This mic isn't a loopback, so the recording plays on your default output (speaker) and won't show as system mic activity. Install a loopback like BlackHole, then select it here.";
+        micHint.textContent = "This mic isn't a loopback, so the recording plays on your default output (speaker) and won't show as system mic activity. Install a loopback like VB-Cable, then select it here.";
         micHint.className = "hint mic-route-hint route-warn";
       }
     }
