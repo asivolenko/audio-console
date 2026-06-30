@@ -28,6 +28,8 @@
     min-height:100vh; -webkit-font-smoothing:antialiased;
   }
   .wrap{max-width:1080px; margin:0 auto; padding:34px 22px 80px}
+  .updated{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--muted-2); margin-bottom:20px; padding:5px 10px; border:1px solid var(--line-soft); border-radius:999px; background:rgba(24,27,36,.5)}
+  .updated svg{width:13px; height:13px; color:var(--muted)}
   a{color:inherit}
 
   /* ---- header ---- */
@@ -211,6 +213,11 @@
 </head>
 <body>
 <div class="wrap">
+
+  <div class="updated">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Last updated · Jun 30, 2026
+  </div>
 
   <header>
     <div class="eyebrow"><span class="dot"></span> Feature Demo</div>
