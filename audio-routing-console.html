@@ -484,15 +484,21 @@
   const LOOPBACK_RE = /(blackhole|black hole|vb-?audio|vb-?cable|cable\s*(in|out)|loopback|soundflower|virtual.*(cable|loopback)|aggregate)/i;
   const isLoopback = l => LOOPBACK_RE.test(l||"");
   function matchOutputForMic(mic, outputs){
-    if(!mic) return null;
-    let m = outputs.find(o=>o.groupId && mic.groupId && o.groupId===mic.groupId);
-    if(m) return m;
-    if(isLoopback(mic.label)){
-      if(/cable\s*output/i.test(mic.label)){ m = outputs.find(o=>/cable\s*input/i.test(o.label||"")); if(m) return m; }
-      const key = (mic.label||"").toLowerCase().match(/blackhole|soundflower|loopback|vb-?cable|vb-?audio/);
-      if(key){ m = outputs.find(o=>isLoopback(o.label) && (o.label||"").toLowerCase().includes(key[0])); if(m) return m; }
+    if(!mic || !isLoopback(mic.label)) return null;   // only a loopback mic can be fed by an output
+    // VB-Cable: the "CABLE Output" recording device is fed by the "CABLE Input" playback device
+    if(/cable\s*output/i.test(mic.label)){
+      const m = outputs.find(o=>/cable\s*input/i.test(o.label||""));
+      if(m) return m;
     }
-    return null;
+    // Same loopback family on both ends (BlackHole, Soundflower, Loopback, VB-Audio…)
+    const key = (mic.label||"").toLowerCase().match(/blackhole|soundflower|loopback|vb-?cable|vb-?audio/);
+    if(key){
+      const m = outputs.find(o=>isLoopback(o.label) && (o.label||"").toLowerCase().includes(key[0]));
+      if(m) return m;
+    }
+    // last resort: an output in the same device group — but only if it's itself a loopback
+    const g = outputs.find(o=>o.groupId && mic.groupId && o.groupId===mic.groupId && isLoopback(o.label));
+    return g || null;
   }
 
   function Channel(root, onChange){
