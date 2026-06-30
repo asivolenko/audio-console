@@ -304,9 +304,9 @@
 
       <div class="field">
         <label class="checkbox">
-          <input type="checkbox" id="noCall"> No ongoing call
+          <input type="checkbox" id="ongoingCall" checked> Ongoing call
         </label>
-        <p class="hint">When unchecked, pressing Play (or Play both) opens your Krisp microphone so it's live for the call. Check this if you're just testing without a call.</p>
+        <p class="hint">When checked, pressing Play (or Play both) opens your Krisp microphone so it's live for the call. Uncheck this if you're just testing without a call.</p>
 
         <div class="mon-inline" id="agentMon" hidden>
           <span class="mon-dot"></span>
@@ -741,7 +741,7 @@
     if(!a && !c) return;
     await Promise.all([ a?agent.prepare():null, c?cust.prepare():null ]);  // route outputs first
     if(vtDelayChk && vtDelayChk.checked){
-      startAgentMon();                // open the mic stream(s) now (respects "No ongoing call")
+      startAgentMon();                // open the mic stream(s) now (only when "Ongoing call")
       agent.warm(true);               // play inaudible signal so the agent output stream is live
       cust.warm(true);                // play inaudible signal so the selected speaker stream is live
       startVT(a, c);                  // ...but hold the recordings back by the delay
@@ -756,8 +756,8 @@
   [agent, cust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, masterState)));
   masterState();
 
-  /* ---------- agent: activate Krisp mic on play (unless "No ongoing call") ---------- */
-  const noCallChk = $("#noCall");
+  /* ---------- agent: activate Krisp mic on play (only when "Ongoing call") ---------- */
+  const ongoingChk = $("#ongoingCall");
   const agentMonRow = $("#agentMon");
   const agentDb = $("#agentDb");
   const agentSegsWrap = $("#agentSegs");
@@ -788,11 +788,11 @@
   }
 
   async function startAgentMon(){
-    if(noCallChk.checked) return;     // ongoing-call monitoring disabled
+    if(!ongoingChk.checked) return;   // only open the mic when there's an ongoing call
     if(amStream) return;              // already running
     const krisp = findKrispMic();
     if(!krisp){
-      krispNoteText.textContent = "No Krisp microphone found. Open Krisp so \u201Ckrisp microphone (Virtual)\u201D is available, or tick \u201CNo ongoing call\u201D to play without it.";
+      krispNoteText.textContent = "No Krisp microphone found. Open Krisp so \u201Ckrisp microphone (Virtual)\u201D is available, or untick \u201COngoing call\u201D to play without it.";
       krispNote.classList.add("show");
       return;
     }
@@ -832,9 +832,9 @@
   agent.audio.addEventListener("play",  startAgentMon);
   agent.audio.addEventListener("pause", stopAgentMon);
   agent.audio.addEventListener("ended", ()=>{ if(agent.audio.paused) stopAgentMon(); });
-  noCallChk.addEventListener("change", ()=>{
-    if(noCallChk.checked) stopAgentMon();
-    else if(!agent.audio.paused) startAgentMon();
+  ongoingChk.addEventListener("change", ()=>{
+    if(!ongoingChk.checked) stopAgentMon();          // unchecked → no call → close mic
+    else if(!agent.audio.paused) startAgentMon();     // checked → call → open mic if playing
   });
 
   function describeGUMError(err){
