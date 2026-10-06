@@ -167,7 +167,7 @@
   .segs i.seg-on-lo{background:var(--ok)} .segs i.seg-on-mid{background:var(--agent)} .segs i.seg-on-hi{background:var(--err)}
   .meter.idle .segs i{opacity:.5}
 
-  /* agent: No-ongoing-call checkbox + inline Krisp mic activity */
+  /* agent: Ongoing-call checkbox + inline Krisp mic activity */
   .checkbox{display:inline-flex; align-items:center; gap:10px; font-size:14px; color:var(--text); cursor:pointer; user-select:none}
   .checkbox input{appearance:none; -webkit-appearance:none; width:18px; height:18px; border:1.5px solid var(--line); border-radius:5px; background:var(--bg); cursor:pointer; display:grid; place-content:center; flex:none}
   .checkbox input:checked{background:var(--agent); border-color:var(--agent)}
@@ -216,15 +216,16 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Jun 30, 2026
+    Last updated · Oct 6, 2026
   </div>
 
   <header>
     <div class="eyebrow"><span class="dot"></span> Feature Demo</div>
     <h1>Demo Platform for <span class="warm">AA</span>, <span class="cool">SA</span>, and <span class="vt">VT</span> features</h1>
     <p class="lede">This platform is for demoing SA, AA, and VT features. As a microphone, select <strong>VB-Cable</strong> (or another loopback device); as a speaker, select <strong>Krisp Speaker</strong>. In Krisp, select the loopback device as the microphone.</p>
+  </header>
 
-    <div class="bar">
+  <div class="bar">
       <button id="enable" class="btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
         Enable audio devices
@@ -246,7 +247,6 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span>Devices are detected, but your browser is hiding their names. Choose <strong>Allow</strong> when asked for microphone access, then click <strong>Rescan</strong>. If you opened this file by double-clicking it, browsers (including Chrome) withhold device names on <kbd>file://</kbd> pages — serve it from <kbd>http://localhost</kbd> or <kbd>https://</kbd> to see real device names.</span>
     </div>
-  </header>
 
   <!-- DEVICE INVENTORY -->
   <details class="inv" id="inv">
@@ -304,9 +304,8 @@
 
       <div class="field">
         <label class="checkbox">
-          <input type="checkbox" id="ongoingCall" checked> Ongoing call
+          <input type="checkbox" id="ongoingCall"> Ongoing call
         </label>
-        <p class="hint">When checked, pressing Play (or Play both) opens your Krisp microphone so it's live for the call. Uncheck this if you're just testing without a call.</p>
 
         <div class="mon-inline" id="agentMon" hidden>
           <span class="mon-dot"></span>
@@ -490,6 +489,9 @@
   // virtual speaker.
   const LOOPBACK_RE = /(blackhole|black hole|vb-?audio|vb-?cable|cable\s*(in|out)|loopback|soundflower|virtual.*(cable|loopback)|aggregate)/i;
   const isLoopback = l => LOOPBACK_RE.test(l||"");
+  // VB-Cable only — the agent input list is restricted to this, since routing works solely through it
+  const VBCABLE_RE = /(vb-?audio|vb-?cable|cable\s*(in|out)put)/i;
+  const isVBCable = l => VBCABLE_RE.test(l||"");
   function matchOutputForMic(mic, outputs){
     if(!mic || !isLoopback(mic.label)) return null;   // only a loopback mic can be fed by an output
     // VB-Cable: the "CABLE Output" recording device is fed by the "CABLE Input" playback device
@@ -676,7 +678,7 @@
       populate(inputs, outputs){
         lastOutputs = outputs;
         fillSelect(sel, outputs, "output");
-        fillSelect(micSel, inputs, "microphone");
+        fillSelect(micSel, inputs.filter(d=>isVBCable(d.label)), "VB-Cable device");
         if(micSel) updateMicRoute();
         if(!SUPPORTS_SINK){
           if(sel) sel.disabled = true;
@@ -698,10 +700,11 @@
   const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
   const CLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
-  let vtTimer = null, vtTick = null;  // pending delayed-start timeout + countdown interval
+  let vtTimer = null, vtTick = null;        // active countdown timeout + its 1-second tick
+  let vtActive = false, vtTailStarted = false, vtHadA = false, vtHadC = false;
 
   function masterState(){
-    if(vtTimer) return;               // during the countdown, the button label is owned by startVT
+    if(vtTimer) return;               // during a countdown, the button label is owned by the VT timer
     const has = agent.hasSource() || cust.hasSource();
     const playing = agent.isPlaying() || cust.isPlaying();
     if(playBothBtn){
@@ -711,40 +714,67 @@
     if(stopBothBtn) stopBothBtn.disabled = !has;
   }
 
+  // shared countdown painter — used for both the lead-in delay and the end (tail) delay
+  function vtCountdown(label, done){
+    let remaining = Math.round(VT_DELAY_MS/1000);
+    const paint = ()=>{ if(playBothBtn) playBothBtn.innerHTML = CLOCK_SVG+" "+label+" · "+remaining+"s"; };
+    paint();
+    if(stopBothBtn) stopBothBtn.disabled = false;
+    vtTick = setInterval(()=>{ remaining--; if(remaining>0) paint(); }, 1000);
+    vtTimer = setTimeout(()=>{ clearInterval(vtTick); vtTick=null; vtTimer=null; done(); }, VT_DELAY_MS);
+  }
+
   function cancelVT(){
     if(vtTimer){ clearTimeout(vtTimer); vtTimer=null; }
     if(vtTick){ clearInterval(vtTick); vtTick=null; }
     agent.warm(false); cust.warm(false);   // stop silence on the outputs
-    stopAgentMon();                          // close the mic stream opened for the countdown
+    stopAgentMon();                          // close the mic stream opened for VT
+    vtActive = false; vtTailStarted = false;
     masterState();
   }
 
+  // lead-in: hold the recordings back by the delay, then release them (streams stay warm throughout)
   function startVT(a, c){
-    let remaining = Math.round(VT_DELAY_MS/1000);
-    const paint = ()=>{ if(playBothBtn) playBothBtn.innerHTML = CLOCK_SVG+" Cancel · "+remaining+"s"; };
-    paint();
-    if(stopBothBtn) stopBothBtn.disabled = false;
-    vtTick = setInterval(()=>{ remaining--; if(remaining>0) paint(); }, 1000);
-    vtTimer = setTimeout(()=>{
-      clearInterval(vtTick); vtTick=null; vtTimer=null;
-      agent.warm(false); cust.warm(false);   // hand the outputs over to the recordings
+    vtCountdown("Cancel", ()=>{
       if(a) agent.audio.play().catch(()=>{});
       if(c) cust.audio.play().catch(()=>{});
+      masterState();                         // warm stays ON through playback so the streams never drop
+    });
+  }
+
+  // tail: once playback finishes, keep the streams open the same delay, then turn them off
+  function startVTTail(){
+    if(vtTailStarted) return;
+    vtTailStarted = true;
+    agent.warm(true); cust.warm(true);       // keep the output streams live now the recordings are done
+    vtCountdown("Wrapping up", ()=>{
+      agent.warm(false); cust.warm(false);
+      stopAgentMon();
+      vtActive = false; vtTailStarted = false;
       masterState();
-    }, VT_DELAY_MS);
+    });
+  }
+
+  // fire the tail only after every recording that was playing has ended
+  function checkVTTail(){
+    if(!vtActive || vtTimer || vtTailStarted) return;
+    const aDone = !vtHadA || agent.audio.ended;
+    const cDone = !vtHadC || cust.audio.ended;
+    if(aDone && cDone) startVTTail();
   }
 
   async function playBoth(){
-    if(vtTimer){ cancelVT(); return; }                       // pressing during countdown cancels
+    if(vtTimer){ cancelVT(); return; }                       // pressing during a countdown cancels
     if(agent.isPlaying() || cust.isPlaying()){ agent.pause(); cust.pause(); masterState(); return; }
     const a = agent.hasSource(), c = cust.hasSource();
     if(!a && !c) return;
     await Promise.all([ a?agent.prepare():null, c?cust.prepare():null ]);  // route outputs first
     if(vtDelayChk && vtDelayChk.checked){
-      startAgentMon();                // open the mic stream(s) now (only when "Ongoing call")
-      agent.warm(true);               // play inaudible signal so the agent output stream is live
-      cust.warm(true);                // play inaudible signal so the selected speaker stream is live
-      startVT(a, c);                  // ...but hold the recordings back by the delay
+      vtActive = true; vtTailStarted = false; vtHadA = a; vtHadC = c;
+      startAgentMon();                // open the mic (only when NOT "Ongoing call")
+      agent.warm(true);               // inaudible signal keeps the agent output stream live
+      cust.warm(true);                // ...and the selected speaker stream
+      startVT(a, c);                  // delay before the recordings — and the same delay again at the end
     } else {
       if(a) agent.audio.play().catch(()=>{});
       if(c) cust.audio.play().catch(()=>{});
@@ -754,9 +784,11 @@
   if(playBothBtn) playBothBtn.addEventListener("click", playBoth);
   if(stopBothBtn) stopBothBtn.addEventListener("click", ()=>{ cancelVT(); agent.stopReset(); cust.stopReset(); masterState(); });
   [agent, cust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, masterState)));
+  agent.audio.addEventListener("ended", checkVTTail);
+  cust.audio.addEventListener("ended", checkVTTail);
   masterState();
 
-  /* ---------- agent: activate Krisp mic on play (only when "Ongoing call") ---------- */
+  /* ---------- agent: activate Krisp mic on play (only when NOT "Ongoing call") ---------- */
   const ongoingChk = $("#ongoingCall");
   const agentMonRow = $("#agentMon");
   const agentDb = $("#agentDb");
@@ -788,11 +820,11 @@
   }
 
   async function startAgentMon(){
-    if(!ongoingChk.checked) return;   // only open the mic when there's an ongoing call
+    if(ongoingChk.checked) return;    // ongoing call → Krisp already holds the mic, don't open it from here
     if(amStream) return;              // already running
     const krisp = findKrispMic();
     if(!krisp){
-      krispNoteText.textContent = "No Krisp microphone found. Open Krisp so \u201Ckrisp microphone (Virtual)\u201D is available, or untick \u201COngoing call\u201D to play without it.";
+      krispNoteText.textContent = "No Krisp microphone found. Open Krisp so \u201Ckrisp microphone (Virtual)\u201D is available, or tick \u201COngoing call\u201D to play without it.";
       krispNote.classList.add("show");
       return;
     }
@@ -830,11 +862,11 @@
   // start when the agent recording plays — this covers both the agent Play button
   // and Play both (which starts the agent track) — and stop when it pauses/ends
   agent.audio.addEventListener("play",  startAgentMon);
-  agent.audio.addEventListener("pause", stopAgentMon);
-  agent.audio.addEventListener("ended", ()=>{ if(agent.audio.paused) stopAgentMon(); });
+  agent.audio.addEventListener("pause", ()=>{ if(!vtActive) stopAgentMon(); });   // VT tail keeps the mic open
+  agent.audio.addEventListener("ended", ()=>{ if(!vtActive && agent.audio.paused) stopAgentMon(); });
   ongoingChk.addEventListener("change", ()=>{
-    if(!ongoingChk.checked) stopAgentMon();          // unchecked → no call → close mic
-    else if(!agent.audio.paused) startAgentMon();     // checked → call → open mic if playing
+    if(ongoingChk.checked) stopAgentMon();            // checked → ongoing call → don't open mic from here
+    else if(!agent.audio.paused) startAgentMon();      // unchecked → open mic if a recording is playing
   });
 
   function describeGUMError(err){
@@ -929,6 +961,7 @@
   }
   enableBtn.addEventListener("click", enable);
   rescanBtn.addEventListener("click", ()=>{ setStatus("busy","Rescanning…"); refreshDevices(); });
+
 
   // space-bar plays the channel whose controls are focused
   document.addEventListener("keydown", e=>{
