@@ -108,15 +108,21 @@
     background:var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='%23888ea0' stroke-width='1.6' stroke-linecap='round'/></svg>") no-repeat right 13px center;
   }
   select:disabled{opacity:.5}
+  .dev-fixed{font-family:var(--mono); font-size:13px; color:var(--text); padding:11px 13px; border-radius:var(--r-sm); border:1px solid var(--line); background:var(--bg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .dev-fixed.muted{color:var(--muted)}
+  .dev-fixed.missing{color:#ffb3b3; border-color:rgba(255,107,107,.4)}
   .filebox{display:flex; align-items:center; gap:11px}
   .file-btn{flex:none}
   .file-name{font-family:var(--mono); font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .file-name.set{color:var(--text)}
   input[type=file]{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden}
   .hint{font-size:12px; color:var(--muted-2); margin:7px 0 0; line-height:1.45}
-  .mic-route-hint.route-ok, .mic-route-hint.route-warn{padding:10px 12px; border-radius:8px; margin-top:9px; display:flex; gap:9px; align-items:flex-start}
+  .mic-route-hint.route-ok, .mic-route-hint.route-warn, .mic-route-hint.route-err{padding:10px 12px; border-radius:8px; margin-top:9px; display:flex; gap:9px; align-items:flex-start}
   .mic-route-hint.route-ok{border:1px solid rgba(91,209,138,.35); background:rgba(91,209,138,.09); color:#9fe3bb}
   .mic-route-hint.route-warn{border:1px solid rgba(240,162,58,.4); background:rgba(240,162,58,.1); color:#f3c688}
+  .mic-route-hint.route-err{border:1px solid rgba(255,107,107,.4); background:rgba(255,107,107,.1); color:#ffb3b3}
+  .mic-route-hint.route-err::before{content:"!"; font-weight:800; line-height:1.45}
+  .mic-route-hint a{color:inherit; text-decoration:underline}
   .mic-route-hint.route-ok::before{content:"●"; color:var(--ok); font-size:10px; line-height:1.6}
   .mic-route-hint.route-warn::before{content:"!"; font-weight:800; line-height:1.45}
 
@@ -276,7 +282,7 @@
         <span class="chan-tag">CH 1</span>
         <span class="chan-title">Agent</span>
       </div>
-      <p class="sub">Plays the agent recording so a call app hears it as the agent's microphone. Pick the mic below — with a loopback device like VB-Cable the recording is delivered to it automatically.</p>
+      <p class="sub">Plays the agent recording so a call app hears it as the agent's microphone. The recording is delivered to the VB-Cable device automatically.</p>
 
       <div class="field">
         <label>Recording</label>
@@ -298,8 +304,8 @@
 
       <div class="field">
         <label>Agent microphone — your call app's input</label>
-        <select class="dev-mic" disabled><option>Enable audio devices first</option></select>
-        <p class="hint mic-route-hint">Pick the microphone your softphone or meeting app will use for the agent.</p>
+        <div class="dev-fixed dev-mic muted">Enable audio devices first</div>
+        <p class="hint mic-route-hint">Uses VB-Cable as the agent microphone in your softphone or meeting app.</p>
       </div>
 
       <div class="field">
@@ -513,7 +519,8 @@
   function Channel(root, onChange){
     const audio = $(".player", root);
     const sel   = $(".dev-out", root);     // Customer channel only (speakers)
-    const micSel= $(".dev-mic", root);     // Agent channel only (microphones)
+    const micEl = $(".dev-mic", root);     // Agent channel only (fixed VB-Cable mic)
+    let micDev = null;                     // the detected VB-Cable input, or null
     const micHint = $(".mic-route-hint", root);
     const play  = $(".btn-play", root);
     const stop  = $(".btn-stop", root);
@@ -537,9 +544,8 @@
     // Agent: the output that feeds the chosen mic (a loopback) if one exists,
     // otherwise "" which means the browser's default output.
     function currentSink(){
-      if(micSel){
-        const mic = (micSel._devs||[]).find(d=>d.deviceId===micSel.value);
-        const match = mic ? matchOutputForMic(mic, lastOutputs) : null;
+      if(micEl){
+        const match = micDev ? matchOutputForMic(micDev, lastOutputs) : null;
         return match ? match.deviceId : "";
       }
       return sel ? sel.value : "";
@@ -594,19 +600,22 @@
     // agent: when the mic changes, route to the output that feeds it (a loopback)
     // and explain where the audio is actually going
     function updateMicRoute(){
-      if(!micSel || !micHint) return;
-      const mic = (micSel._devs||[]).find(d=>d.deviceId===micSel.value);
-      const match = mic ? matchOutputForMic(mic, lastOutputs) : null;
+      if(!micEl || !micHint) return;
       micHint.style.color = "";
+      if(!micDev){
+        micHint.innerHTML = 'VB-Cable is not installed. Install it from <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">vb-audio.com/Cable</a>, restart your browser, then click Rescan.';
+        micHint.className = "hint mic-route-hint route-err";
+        return;
+      }
+      const match = matchOutputForMic(micDev, lastOutputs);
       if(match){
         micHint.textContent = "Playing into \u201C"+(match.label||"output")+"\u201D, which feeds this mic. Pick the same device as the input in your call app or System Settings.";
         micHint.className = "hint mic-route-hint route-ok";
       } else {
-        micHint.textContent = "This mic isn't a loopback, so the recording plays on your default output (speaker) and won't show as system mic activity. Install a loopback like VB-Cable, then select it here.";
+        micHint.textContent = "Found \u201C"+(micDev.label||"VB-Cable")+"\u201D but not its matching CABLE Input output, so the recording plays on your default output. Reinstall VB-Cable, then click Rescan.";
         micHint.className = "hint mic-route-hint route-warn";
       }
     }
-    if(micSel) micSel.addEventListener("change", ()=>{ updateMicRoute(); applySink(); });
 
     // transport
     play.addEventListener("click", async ()=>{
@@ -678,8 +687,14 @@
       populate(inputs, outputs){
         lastOutputs = outputs;
         fillSelect(sel, outputs, "output");
-        fillSelect(micSel, inputs.filter(d=>isVBCable(d.label)), "VB-Cable device");
-        if(micSel) updateMicRoute();
+        if(micEl){
+          const cables = inputs.filter(d=>isVBCable(d.label));
+          micDev = cables.find(d=>/cable\s*output/i.test(d.label)) || cables[0] || null;
+          micEl.textContent = micDev ? micDev.label : "VB-Cable not found";
+          micEl.classList.remove("muted");
+          micEl.classList.toggle("missing", !micDev);
+          updateMicRoute();
+        }
         if(!SUPPORTS_SINK){
           if(sel) sel.disabled = true;
           sinkNote.classList.add("show");
