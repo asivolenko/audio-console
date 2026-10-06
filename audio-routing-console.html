@@ -304,7 +304,7 @@
 
       <div class="field">
         <label>Agent microphone — your call app's input</label>
-        <div class="dev-fixed dev-mic muted">Enable audio devices first</div>
+        <div class="dev-fixed dev-mic muted">Loading audio devices…</div>
         <p class="hint mic-route-hint">Uses VB-Cable as the agent microphone in your softphone or meeting app.</p>
       </div>
 
@@ -383,8 +383,8 @@
 
       <div class="field">
         <label>Output device — speakers / headset</label>
-        <select class="dev-out" disabled><option>Enable audio devices first</option></select>
-        <p class="hint">Pick the device you're monitoring on so the customer side stays separate from the agent injection.</p>
+        <select class="dev-out" disabled><option>Loading audio devices…</option></select>
+        <p class="hint">Defaults to Krisp Speaker when available. Change it if you're monitoring on another device.</p>
       </div>
 
       <div class="transport">
@@ -583,7 +583,8 @@
         sinkNote.classList.add("show");
       }
     }
-    if(sel) sel.addEventListener("change", applySink);
+    let userPickedOut = false;  // once the user picks a speaker, stop auto-selecting Krisp
+    if(sel) sel.addEventListener("change", ()=>{ userPickedOut = true; applySink(); });
 
     // silent warm-up: keep this channel's output device stream open (used during VT delay)
     const silent = new Audio(SILENCE_URL);
@@ -687,6 +688,11 @@
       populate(inputs, outputs){
         lastOutputs = outputs;
         fillSelect(sel, outputs, "output");
+        if(sel && !userPickedOut){
+          const krisp = outputs.find(d=>/krisp/i.test(d.label) && /speaker/i.test(d.label))
+                     || outputs.find(d=>/krisp/i.test(d.label));
+          if(krisp) sel.value = krisp.deviceId;
+        }
         if(micEl){
           const cables = inputs.filter(d=>isVBCable(d.label));
           micDev = cables.find(d=>/cable\s*output/i.test(d.label)) || cables[0] || null;
@@ -988,6 +994,8 @@
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     enableBtn.disabled = true;
     setStatus("err","This browser doesn't expose audio devices to web pages.");
+  } else {
+    enable();   // load devices right away; the button remains as a retry if access is denied
   }
 })();
 </script>
