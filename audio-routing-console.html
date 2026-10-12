@@ -240,6 +240,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         Rescan
       </button>
+      <label class="checkbox" title="Krisp isn't installed: play the agent through VB-Cable and don't open the Krisp mic">
+        <input type="checkbox" id="extMode"> Extension mode
+      </label>
       <div class="spacer"></div>
       <div id="status" class="status"><span class="led"></span><span id="statusText">Devices locked — enable access to begin</span></div>
     </div>
@@ -452,6 +455,7 @@
 
   const statusEl = $("#status"), statusText = $("#statusText");
   const enableBtn = $("#enable"), rescanBtn = $("#rescan");
+  const extModeChk = $("#extMode");   // Extension mode: no Krisp on this system
   const SUPPORTS_SINK = ("setSinkId" in HTMLMediaElement.prototype);
 
   function setStatus(state, text){
@@ -545,6 +549,11 @@
     // otherwise "" which means the browser's default output.
     function currentSink(){
       if(micEl){
+        // Extension mode: always play the agent into the VB-Cable speaker (CABLE Input)
+        if(extModeChk.checked){
+          const cable = lastOutputs.find(o=>/cable\s*input/i.test(o.label||""));
+          if(cable) return cable.deviceId;
+        }
         const match = micDev ? matchOutputForMic(micDev, lastOutputs) : null;
         return match ? match.deviceId : "";
       }
@@ -842,6 +851,7 @@
 
   async function startAgentMon(){
     if(ongoingChk.checked) return;    // ongoing call → Krisp already holds the mic, don't open it from here
+    if(extModeChk.checked) return;    // extension mode → Krisp isn't installed, so there's no Krisp mic to open
     if(amStream) return;              // already running
     const krisp = findKrispMic();
     if(!krisp){
@@ -888,6 +898,12 @@
   ongoingChk.addEventListener("change", ()=>{
     if(ongoingChk.checked) stopAgentMon();            // checked → ongoing call → don't open mic from here
     else if(!agent.audio.paused) startAgentMon();      // unchecked → open mic if a recording is playing
+  });
+
+  extModeChk.addEventListener("change", ()=>{
+    if(extModeChk.checked){ stopAgentMon(); krispNote.classList.remove("show"); }
+    else if(!agent.audio.paused) startAgentMon();
+    agent.prepare();                                   // re-route the agent output for the new mode
   });
 
   function describeGUMError(err){
