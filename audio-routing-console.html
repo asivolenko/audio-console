@@ -519,7 +519,7 @@
           <span class="chan-tag">Outgoing</span>
           <span class="chan-title">Agent</span>
         </div>
-        <p class="sub">Plays into the VB-Cable speaker (CABLE Input), so the call hears it through the VB-Cable microphone.</p>
+        <p class="sub">Plays into the VB-Cable speaker, so the call hears it through the VB-Cable microphone.</p>
         <div class="field">
           <label>Recording</label>
           <div class="filebox">
@@ -1035,7 +1035,7 @@
     const tileA = $("#xTileAgent"), tileC = $("#xTileCust"), muteBadge = $("#xMuteBadge");
     const PHONE = joinBtn.querySelector("svg").outerHTML;
 
-    const agentEl = new Audio();     // agent recording → VB-Cable speaker (CABLE Input)
+    const agentEl = new Audio();     // agent recording → VB-Cable speaker
     const custEl  = new Audio();     // customer recording → WebAudio → sent over the call
     const remoteEl  = new Audio();   // incoming call audio (customer) → call speaker
     const monitorEl = new Audio();   // outgoing call audio as received (agent) → muted unless "hear agent"
@@ -1046,7 +1046,7 @@
 
     function showErr(msg){ noteText.textContent = msg; note.classList.add("show"); }
     function clearErr(){ note.classList.remove("show"); }
-    async function setSink(el, id){ if(SUPPORTS_SINK){ try{ await el.setSinkId(id || ""); }catch(e){} } }
+    async function setSink(el, id){ if(SUPPORTS_SINK){ try{ await el.setSinkId(id || ""); return true; }catch(e){ return false; } } return false; }
 
     function bindFile(input, el, nameEl, set){
       input.addEventListener("change", ()=>{
@@ -1130,10 +1130,9 @@
         const answer = await pcC.createAnswer();
         await pcC.setLocalDescription(answer);
         await pcA.setRemoteDescription(answer);
-        await setSink(agentEl, cableOut ? cableOut.deviceId : "");
         inCall = true; muted = false;
         t0 = Date.now(); tick(); timerId = setInterval(tick, 1000);
-        if(!cableOut) showErr("VB-Cable's speaker (CABLE Input) wasn't found, so the agent recording will play on your default output instead of the call. Reinstall VB-Cable, then click Rescan.");
+        if(!cableOut) showErr("VB-Cable wasn't found as a speaker, so the agent recording can't reach the call. Reinstall VB-Cable, then click Rescan.");
       }catch(err){
         leave();
         showErr(err && err.name && /^(NotAllowed|NotFound|NotReadable)Error$/.test(err.name) ? describeGUMError(err) : "Couldn't start the call ("+((err && (err.message||err.name))||"error")+").");
@@ -1176,10 +1175,18 @@
       if(micStream) micStream.getAudioTracks().forEach(t=>{ t.enabled = !muted; });
       sync();
     });
+    // the agent recording must go into VB-Cable — refuse to play it on the speakers instead
+    async function playAgent(){
+      if(!cableOut || !(await setSink(agentEl, cableOut.deviceId))){
+        showErr("Couldn't send the agent recording to VB-Cable, so it wasn't played. Click Rescan and try again; if it keeps happening, reinstall VB-Cable.");
+        return;
+      }
+      agentEl.play().catch(()=>{});
+    }
     playBtn.addEventListener("click", ()=>{
       if(!agentEl.paused || !custEl.paused){ agentEl.pause(); custEl.pause(); }
       else {
-        if(hasA) agentEl.play().catch(()=>{});
+        if(hasA) playAgent();
         if(hasC) custEl.play().catch(()=>{});
       }
       sync();
@@ -1193,9 +1200,10 @@
     spkSel.addEventListener("change", ()=>{ setSink(remoteEl, spkSel.value); setSink(monitorEl, spkSel.value); });
 
     function populate(inputs, outputs){
-      const cables = inputs.filter(d=>isVBCable(d.label));
+      const cables = inputs.filter(d=>isVBCable(d.label) && d.deviceId!=="default" && d.deviceId!=="communications");
       cableMic = cables.find(d=>/cable\s*output/i.test(d.label)) || cables[0] || null;
-      cableOut = outputs.find(o=>/cable\s*input/i.test(o.label||"")) || null;
+      // Windows: "CABLE Input" feeds "CABLE Output". macOS: one "VB-Cable" device for both directions
+      cableOut = cableMic ? matchOutputForMic(cableMic, outputs.filter(o=>o.deviceId!=="default")) : null;
       micField.textContent = cableMic ? cableMic.label : "VB-Cable not found";
       micField.classList.remove("muted");
       micField.classList.toggle("missing", !cableMic);
@@ -1203,15 +1211,15 @@
         micHint.innerHTML = 'VB-Cable is not installed. Install it from <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">vb-audio.com/Cable</a>, restart your browser, then click Rescan.';
         micHint.className = "hint mic-route-hint route-err";
       } else if(!cableOut){
-        micHint.textContent = "Found “"+cableMic.label+"” but not its CABLE Input speaker, so the agent recording can't reach the call. Reinstall VB-Cable, then click Rescan.";
+        micHint.textContent = "Found “"+cableMic.label+"” as a microphone but not as a speaker, so the agent recording can't reach the call. Reinstall VB-Cable, then click Rescan.";
         micHint.className = "hint mic-route-hint route-warn";
       } else {
-        micHint.textContent = "The agent recording plays into “"+(cableOut.label||"CABLE Input")+"” and the call picks it up from this microphone.";
+        micHint.textContent = "The agent recording plays into the “"+(cableOut.label||"VB-Cable")+"” speaker and the call picks it up from this microphone.";
         micHint.className = "hint mic-route-hint route-ok";
       }
-      // call speaker: any real output except VB-Cable's own input
+      // call speaker: any real output except VB-Cable itself
       const prev = spkSel.value;
-      const list = outputs.filter(o=>!/cable\s*input/i.test(o.label||""));
+      const list = outputs.filter(o=>!isVBCable(o.label));
       spkSel.innerHTML = "";
       if(!list.length){ spkSel.innerHTML = '<option value="">No outputs found</option>'; spkSel.disabled = true; return; }
       list.forEach((d,i)=>{
