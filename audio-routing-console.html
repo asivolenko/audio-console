@@ -150,7 +150,7 @@
   .tbtn.play{width:50px;height:50px; background:var(--accent); border-color:transparent; color:#15171e}
   .tbtn.toggle[aria-pressed="true"]{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
 
-  .scrub{display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .scrub{flex:1; display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:12px; color:var(--muted)}
   .track{flex:1; height:8px; background:var(--bg); border:1px solid var(--line-soft); border-radius:6px; position:relative; cursor:pointer}
   .fill{position:absolute; inset:0 auto 0 0; width:0%; background:var(--accent); border-radius:6px 0 0 6px; pointer-events:none}
   .time{min-width:42px; text-align:center; color:var(--text)}
@@ -213,6 +213,18 @@
   .tab:hover{color:var(--text)}
   .tab[aria-selected="true"]{color:var(--text); border-bottom-color:var(--focus)}
   .tabpanel[hidden]{display:none}
+  .checklist{list-style:none; margin:14px 0 0; padding:12px 14px; border:1px solid var(--line); border-radius:var(--r); background:rgba(24,27,36,.5); display:flex; flex-direction:column; gap:8px; font-size:13.5px}
+  .checklist li{display:flex; gap:10px; align-items:flex-start}
+  .checklist .ck{width:16px; height:16px; border-radius:50%; flex:none; margin-top:2px; border:1.5px solid var(--muted-2)}
+  .checklist li.ok .ck{background:var(--ok); border-color:var(--ok)}
+  .checklist li.bad .ck{background:var(--err); border-color:var(--err)}
+  .checklist li.wait .ck{border-color:var(--warn); animation:pulse 1s infinite}
+  .checklist li.bad .ck-text{color:#ffb3b3}
+  .mic-row{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .mic-state{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .mic-state.ok{color:var(--ok)} .mic-state.warn{color:#f3c688}
+  .ext-meter{border-color:var(--line-soft); background:var(--bg); margin-top:8px}
+  .ext-meter .mon-name{color:var(--muted); min-width:92px}
   .tab-intro{color:var(--muted); font-size:14px; margin:18px 0 0; max-width:82ch}
 
 
@@ -229,13 +241,29 @@
     *{animation:none !important; transition:none !important}
   }
 </style>
+<script>
+  // Extension mode: lets the page hand a recording to getUserMedia as its microphone.
+  // Installed before the Krisp extension wraps getUserMedia, so the extension processes
+  // what this returns exactly as it would a real microphone.
+  (function(){
+    const md = navigator.mediaDevices;
+    if(!md || !md.getUserMedia) return;
+    const realGUM = md.getUserMedia.bind(md);
+    window.__virtualMic = { stream:null };
+    md.getUserMedia = function(c){
+      const vm = window.__virtualMic;
+      if(vm.stream && c && c.audio && !c.video){ const st = vm.stream; vm.stream = null; return Promise.resolve(st); }
+      return realGUM(c);
+    };
+  })();
+</script>
 </head>
 <body>
 <div class="wrap">
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Oct 13, 2026 · 15:04
+    Last updated · Oct 13, 2026 · 15:52
   </div>
 
   <header>
@@ -458,149 +486,117 @@
 
   </section>
 
-  <!-- EXTENSION MODE: plain audio player, no mic or call streams -->
+  <!-- EXTENSION MODE: drive the Krisp Chrome extension (Voice Translation) -->
   <section class="tabpanel" id="tab-ext" role="tabpanel" hidden>
-    <p class="tab-intro">For demos with the Krisp browser extension, when the Krisp desktop app isn't installed. This tab only plays audio: the agent recording goes into the VB-Cable speaker and the customer recording plays on the speaker you pick. It doesn't open any microphone or call streams.</p>
+    <p class="tab-intro">For testing the <strong>Krisp Chrome extension</strong> (Voice Translation). The agent recording is handed to the extension as this page's microphone, and the customer recording plays in this tab like a remote caller. VB-Cable and the Krisp desktop app aren't needed here.</p>
 
-  <div class="channels">
+    <ul class="checklist">
+      <li id="xChkHttps"><span class="ck"></span><span class="ck-text"></span></li>
+      <li id="xChkExt"><span class="ck"></span><span class="ck-text"></span></li>
+      <li class="ck-manual"><span class="ck"></span><span class="ck-text">On this tab, click the Krisp icon (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>), pick the customer language and turn on <strong>Voice Translation</strong>.</span></li>
+    </ul>
 
-    <section class="card agent" id="card-xagent">
-      <div class="card-head">
-        <span class="chan-tag">CH 1</span>
-        <span class="chan-title">Agent</span>
-      </div>
-      <p class="sub">Plays the agent recording into the VB-Cable speaker, so a browser call app using VB-Cable as its microphone hears it as the agent.</p>
-
+    <div class="channels">
+      <section class="card agent" id="card-xagent">
+        <div class="card-head">
+          <span class="chan-tag">Microphone</span>
+          <span class="chan-title">Agent</span>
+        </div>
+        <p class="sub">Fed straight into the extension as the microphone, so Krisp treats it as the agent speaking. It isn't played out loud in this tab.</p>
       <div class="field">
         <label>Recording</label>
         <div class="filebox">
           <label class="btn ghost file-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Choose file
-            <input type="file" accept="audio/*" class="file-input">
+            <input type="file" accept="audio/*" id="xAgentFile">
           </label>
-          <span class="file-name">No file selected</span>
+          <span class="file-name" id="xAgentName">No file selected</span>
         </div>
       </div>
-
-      <div class="flow" aria-hidden="true">
-        <span class="node"><span class="pip"></span>Source</span>
-        <span class="line"></span>
-        <span class="node">Mic<span class="pip"></span></span>
-      </div>
-
       <div class="field">
-        <label>Agent microphone — your call app's input</label>
-        <div class="dev-fixed dev-mic muted">Loading audio devices…</div>
-        <p class="hint mic-route-hint">Select VB-Cable as the microphone in your browser call app.</p>
-      </div>
-
-      <div class="transport">
-        <button class="tbtn play btn-play" disabled aria-label="Play agent recording">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
-        </button>
-        <button class="tbtn btn-stop" disabled aria-label="Stop">
-          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-        </button>
-        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-        </button>
-        <div class="scrub">
-          <span class="time t-cur">0:00</span>
-          <div class="track"><div class="fill"></div></div>
-          <span class="time t-dur">0:00</span>
+        <label>Agent microphone</label>
+        <div class="mic-row">
+          <button class="btn ghost" id="xMicBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg> Start mic</button>
+          <span class="mic-state" id="xMicState">Mic off</span>
         </div>
       </div>
-
-      <div class="vol">
-        Level
-        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Agent volume">
+      <div class="transport">
+        <button class="tbtn play" id="xAPlay" disabled aria-label="Play agent recording"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg></button>
+        <button class="tbtn" id="xAStop" disabled aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+        <div class="scrub">
+          <span class="time" id="xACur">0:00</span>
+          <div class="track" id="xATrack"><div class="fill" id="xAFill"></div></div>
+          <span class="time" id="xADur">0:00</span>
+        </div>
       </div>
-
-      <audio class="player" preload="metadata"></audio>
-      <div class="notice err sink-note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+      <div class="field">
+        <div class="mon-inline ext-meter">
+          <span class="mon-name">Recording</span>
+          <div class="segs mini" id="xRecSegs"></div>
+          <span class="mon-db" id="xRecDb">—</span>
+        </div>
+        <div class="mon-inline ext-meter">
+          <span class="mon-name">After Krisp</span>
+          <div class="segs mini" id="xOutSegs"></div>
+          <span class="mon-db" id="xOutDb">—</span>
+        </div>
       </div>
-    </section>
+        <button class="btn ghost" id="xHearBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg> Hear agent output</button>
+        <p class="hint">Opens a small window that plays the agent audio as Krisp outputs it. It has to be a separate window: anything playing in this tab is captured as customer audio.</p>
+      </section>
 
-    <section class="card cust" id="card-xcust">
-      <div class="card-head">
-        <span class="chan-tag">CH 2</span>
-        <span class="chan-title">Customer</span>
-      </div>
-      <p class="sub">Plays the customer recording to whatever you want to listen on — your speakers, headset, or a second monitoring output.</p>
-
+      <section class="card cust" id="card-xcust">
+        <div class="card-head">
+          <span class="chan-tag">Speaker</span>
+          <span class="chan-title">Customer</span>
+        </div>
+        <p class="sub">Plays in this tab like a remote caller's voice. With Voice Translation on, Krisp captures the tab's audio and plays the original plus the translation on your default speaker.</p>
       <div class="field">
         <label>Recording</label>
         <div class="filebox">
           <label class="btn ghost file-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Choose file
-            <input type="file" accept="audio/*" class="file-input">
+            <input type="file" accept="audio/*" id="xCustFile">
           </label>
-          <span class="file-name">No file selected</span>
+          <span class="file-name" id="xCustName">No file selected</span>
         </div>
       </div>
-
-      <div class="flow" aria-hidden="true">
-        <span class="node"><span class="pip"></span>Source</span>
-        <span class="line"></span>
-        <span class="node">Output<span class="pip"></span></span>
-      </div>
-
-      <div class="field">
-        <label>Output device — speakers / headset</label>
-        <select class="dev-out" disabled><option>Loading audio devices…</option></select>
-        <p class="hint">Pick the speaker to play the customer recording on.</p>
-      </div>
-
       <div class="transport">
-        <button class="tbtn play btn-play" disabled aria-label="Play customer recording">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
-        </button>
-        <button class="tbtn btn-stop" disabled aria-label="Stop">
-          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-        </button>
-        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-        </button>
+        <button class="tbtn play" id="xCPlay" disabled aria-label="Play customer recording"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg></button>
+        <button class="tbtn" id="xCStop" disabled aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
         <div class="scrub">
-          <span class="time t-cur">0:00</span>
-          <div class="track"><div class="fill"></div></div>
-          <span class="time t-dur">0:00</span>
+          <span class="time" id="xCCur">0:00</span>
+          <div class="track" id="xCTrack"><div class="fill" id="xCFill"></div></div>
+          <span class="time" id="xCDur">0:00</span>
         </div>
       </div>
-
-      <div class="vol">
-        Level
-        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Customer volume">
+      <div class="field">
+        <div class="mon-inline ext-meter">
+          <span class="mon-name">Customer</span>
+          <div class="segs mini" id="xCusSegs"></div>
+          <span class="mon-db" id="xCusDb">—</span>
+        </div>
       </div>
+      </section>
+    </div>
 
-      <audio class="player" preload="metadata"></audio>
-      <div class="notice err sink-note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+    <div class="notice err" id="xNote">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="xNoteText"></span>
+    </div>
+
+    <div class="master">
+      <div class="master-label">
+        <span class="mtag">Both channels</span>
+        Start the agent mic if needed, then play both recordings together.
       </div>
-    </section>
-  </div>
-
-  <div class="master">
-    <div class="master-label">
-      <span class="mtag">Both channels</span>
-      Play the agent and customer recordings together, in sync.
+      <div class="master-actions">
+        <button id="xPlayBoth" class="btn" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg> Play both</button>
+        <button id="xStopBoth" class="btn ghost" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg> Stop both</button>
+      </div>
     </div>
-    <div class="master-actions">
-      <button id="xPlayBoth" class="btn" disabled>
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
-        Play both
-      </button>
-      <button id="xStopBoth" class="btn ghost" disabled>
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-        Stop both
-      </button>
-    </div>
-  </div>
   </section>
 
   <p class="foot">
@@ -683,8 +679,7 @@
     return g || null;
   }
 
-  function Channel(root, onChange, opts={}){
-    const preferKrisp = opts.preferKrisp !== false;
+  function Channel(root, onChange){
     const audio = $(".player", root);
     const sel   = $(".dev-out", root);     // Customer channel only (speakers)
     const micEl = $(".dev-mic", root);     // Agent channel only (fixed VB-Cable mic)
@@ -869,7 +864,7 @@
       populate(inputs, outputs){
         lastOutputs = outputs;
         fillSelect(sel, outputs, "output");
-        if(sel && preferKrisp && !userPickedOut){
+        if(sel && !userPickedOut){
           const krisp = outputs.find(d=>/krisp/i.test(d.label) && /speaker/i.test(d.label))
                      || outputs.find(d=>/krisp/i.test(d.label));
           if(krisp) sel.value = krisp.deviceId;
@@ -1079,27 +1074,175 @@
     return "Couldn't open that microphone ("+(n||"error")+").";
   }
 
-  /* ---------- Extension mode: plain playback, no mic or call streams ---------- */
-  const xAgent = Channel($("#card-xagent"), ()=>xMasterState());
-  const xCust  = Channel($("#card-xcust"),  ()=>xMasterState(), {preferKrisp:false});   // Krisp app isn't installed here
-  const xPlayBoth = $("#xPlayBoth"), xStopBoth = $("#xStopBoth");
-  function xMasterState(){
-    const has = xAgent.hasSource() || xCust.hasSource();
-    const playing = xAgent.isPlaying() || xCust.isPlaying();
-    xPlayBoth.disabled = !has; xStopBoth.disabled = !has;
-    xPlayBoth.innerHTML = playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both";
-  }
-  xPlayBoth.addEventListener("click", async ()=>{
-    if(xAgent.isPlaying() || xCust.isPlaying()){ xAgent.pause(); xCust.pause(); xMasterState(); return; }
-    const a = xAgent.hasSource(), c = xCust.hasSource();
-    await Promise.all([ a?xAgent.prepare():null, c?xCust.prepare():null ]);   // route outputs first
-    if(a) xAgent.audio.play().catch(()=>{});
-    if(c) xCust.audio.play().catch(()=>{});
-    xMasterState();
-  });
-  xStopBoth.addEventListener("click", ()=>{ xAgent.stopReset(); xCust.stopReset(); xMasterState(); });
-  [xAgent, xCust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, xMasterState)));
-  xMasterState();
+  /* ---------- Extension mode: drive the Krisp Chrome extension ---------- */
+  const ext = (function(){
+    const note = $("#xNote"), noteText = $("#xNoteText");
+    const micBtn = $("#xMicBtn"), micState = $("#xMicState"), hearBtn = $("#xHearBtn");
+    const playBoth = $("#xPlayBoth"), stopBoth = $("#xStopBoth");
+    const MIC_SVG = micBtn.querySelector("svg").outerHTML;
+    let ctx = null, agentSrc = null, micOut = null, micRaw = null, hearWin = null;
+
+    function showErr(m){ noteText.textContent = m; note.classList.add("show"); }
+    function clearErr(){ note.classList.remove("show"); }
+    function ensureCtx(){
+      if(!ctx){
+        ctx = new (window.AudioContext||window.webkitAudioContext)();
+        // agent recording → virtual mic only (never ctx.destination, or the tab capture would hear it as the customer)
+        agentSrc = ctx.createMediaElementSource(A.el);
+        recMeter.attach(agentSrc);
+        cusMeter.attach(ctx.createMediaElementSource(C.el), true);   // customer: meter + play in the tab
+      }
+      return ctx;
+    }
+
+    // ---- checklist ----
+    function check(li, state, text){ li.className = state; li.querySelector(".ck-text").innerHTML = text; }
+    const isHttps = location.protocol === "https:";
+    check($("#xChkHttps"), isHttps ? "ok" : "bad", isHttps
+      ? "Opened over HTTPS"
+      : "Open this page over <strong>https://</strong> (e.g. GitHub Pages). The extension doesn't run on http:// or local files.");
+    const extActive = ()=>window.__KRISP_PATCH_INSTALLED__ === true;
+    function checkExt(){
+      check($("#xChkExt"), extActive() ? "ok" : "wait", extActive()
+        ? "Krisp extension is active on this page"
+        : "Waiting for the Krisp extension… make sure it's installed, enabled and you're signed in, then reload.");
+    }
+    checkExt();
+    const extPoll = setInterval(()=>{ checkExt(); if(extActive()) clearInterval(extPoll); }, 1000);
+
+    // ---- meters ----
+    function Meter(prefix){
+      const wrap = $("#"+prefix+"Segs"), db = $("#"+prefix+"Db");
+      for(let i=0;i<20;i++) wrap.appendChild(document.createElement("i"));
+      const segs = $$("i", wrap);
+      let an = null, data = null, peak = 0;
+      function paint(level){
+        const lit = Math.round(level*segs.length);
+        segs.forEach((el,i)=>{ el.className = i<lit ? (i<12?"seg-on-lo":i<17?"seg-on-mid":"seg-on-hi") : ""; });
+        db.textContent = level>0.0008 ? (20*Math.log10(level)).toFixed(1)+" dB" : "—";
+      }
+      return {
+        attach(node, toSpeaker){
+          an = ctx.createAnalyser(); an.fftSize = 1024; data = new Float32Array(an.fftSize);
+          node.connect(an);
+          if(toSpeaker) node.connect(ctx.destination);
+        },
+        attachStream(stream){ this.attach(ctx.createMediaStreamSource(stream)); },
+        detach(){ an = null; paint(0); },
+        tick(){
+          if(!an) return;
+          an.getFloatTimeDomainData(data);
+          let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]*data[i];
+          peak = Math.max(Math.min(1, Math.sqrt(sum/data.length)*3.2), peak*0.9);
+          paint(peak);
+        }
+      };
+    }
+    const recMeter = Meter("xRec"), outMeter = Meter("xOut"), cusMeter = Meter("xCus");
+    (function loop(){ recMeter.tick(); outMeter.tick(); cusMeter.tick(); requestAnimationFrame(loop); })();
+
+    // ---- players ----
+    function Player(p, fileId, nameId){
+      const el = new Audio();
+      const play = $("#"+p+"Play"), stop = $("#"+p+"Stop"), fill = $("#"+p+"Fill"), cur = $("#"+p+"Cur"), dur = $("#"+p+"Dur"), track = $("#"+p+"Track");
+      let has = false, url = null;
+      $("#"+fileId).addEventListener("change", e=>{
+        const f = e.target.files && e.target.files[0]; if(!f) return;
+        if(url) URL.revokeObjectURL(url);
+        url = URL.createObjectURL(f); el.src = url; el.load(); has = true;
+        $("#"+nameId).textContent = f.name; $("#"+nameId).classList.add("set");
+        sync();
+      });
+      const icon = ()=>{ play.innerHTML = el.paused ? PLAY_SVG : PAUSE_SVG; };
+      el.addEventListener("loadedmetadata", ()=>{ dur.textContent = fmt(el.duration); });
+      el.addEventListener("timeupdate", ()=>{ fill.style.width = el.duration ? (el.currentTime/el.duration*100)+"%" : "0%"; cur.textContent = fmt(el.currentTime); });
+      ["play","pause","ended"].forEach(ev=>el.addEventListener(ev, ()=>{ icon(); sync(); }));
+      track.addEventListener("click", e=>{ const r = track.getBoundingClientRect(); if(el.duration) el.currentTime = Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*el.duration; });
+      const P = {
+        el,
+        has: ()=>has,
+        playing: ()=>!el.paused,
+        async start(){ ensureCtx(); await ctx.resume(); return el.play().catch(()=>{}); },
+        pause(){ el.pause(); },
+        stop(){ el.pause(); if(has) el.currentTime = 0; },
+        setEnabled(on){ play.disabled = !(on && has); stop.disabled = !has; }
+      };
+      play.addEventListener("click", ()=>{ el.paused ? P.start() : el.pause(); });
+      stop.addEventListener("click", ()=>P.stop());
+      return P;
+    }
+    const A = Player("xA","xAgentFile","xAgentName");
+    const C = Player("xC","xCustFile","xCustName");
+
+    // ---- agent mic: getUserMedia → (Krisp extension) → processed stream ----
+    async function startMic(){
+      clearErr();
+      ensureCtx(); await ctx.resume();
+      if(!extActive()) showErr("The Krisp extension isn't active on this page, so the mic will run unprocessed. Check the list above, then reload.");
+      // a fresh feed each time: Krisp may stop the original track when its processed stream ends
+      const dest = ctx.createMediaStreamDestination();
+      agentSrc.connect(dest);
+      window.__virtualMic.stream = dest.stream;   // the next audio getUserMedia call receives the recording
+      try{
+        micOut = await navigator.mediaDevices.getUserMedia({audio:true});
+      }catch(err){
+        window.__virtualMic.stream = null;
+        agentSrc.disconnect(dest);
+        showErr("Couldn't start the agent mic ("+(err.name||"error")+").");
+        return;
+      }
+      micRaw = dest.stream; micRaw._dest = dest;
+      outMeter.attachStream(micOut);
+      sync();
+    }
+    function stopMic(){
+      if(micOut) micOut.getTracks().forEach(t=>t.stop());   // release Krisp's processed stream
+      if(micRaw){ micRaw.getTracks().forEach(t=>t.stop()); try{ agentSrc.disconnect(micRaw._dest); }catch(e){} }
+      micOut = micRaw = null;
+      outMeter.detach();
+      if(hearWin && !hearWin.closed) hearWin.close();
+      hearWin = null;
+      sync();
+    }
+    micBtn.addEventListener("click", ()=>{ micOut ? stopMic() : startMic(); });
+
+    // translated agent audio can't play in this tab (it would be captured as customer) → separate window
+    hearBtn.addEventListener("click", ()=>{
+      if(!micOut) return;
+      if(hearWin && !hearWin.closed){ hearWin.focus(); return; }
+      hearWin = window.open("", "krisp-agent-output", "width=380,height=170");
+      if(!hearWin){ showErr("The browser blocked the window. Allow pop-ups for this page and try again."); return; }
+      hearWin.document.title = "Agent output (after Krisp)";
+      hearWin.document.body.style.cssText = "font:14px system-ui;background:#101219;color:#ECEAE3;margin:16px";
+      hearWin.document.body.innerHTML = "<p>Agent audio as Krisp outputs it. Keep this window open to listen.</p><audio controls autoplay></audio>";
+      const au = hearWin.document.querySelector("audio");
+      au.srcObject = micOut; au.play().catch(()=>{});
+    });
+
+    function sync(){
+      const on = !!micOut, processed = on && micOut !== micRaw;
+      micBtn.innerHTML = MIC_SVG + (on ? " Stop mic" : " Start mic");
+      micState.className = "mic-state" + (on ? (processed ? " ok" : " warn") : "");
+      micState.textContent = !on ? "Mic off" : processed ? "Mic on · processed by Krisp" : "Mic on · NOT processed by Krisp";
+      hearBtn.disabled = !on;
+      A.setEnabled(on);          // the agent recording only means something once the mic is live
+      C.setEnabled(true);
+      const has = A.has() || C.has(), playing = A.playing() || C.playing();
+      playBoth.disabled = !has; stopBoth.disabled = !has;
+      playBoth.innerHTML = playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both";
+    }
+
+    playBoth.addEventListener("click", async ()=>{
+      if(A.playing() || C.playing()){ A.pause(); C.pause(); return; }
+      if(A.has() && !micOut) await startMic();
+      if(A.has() && micOut) A.start();
+      if(C.has()) C.start();
+    });
+    stopBoth.addEventListener("click", ()=>{ A.stop(); C.stop(); });
+
+    sync();
+    return { stopAll(){ A.stop(); C.stop(); stopMic(); } };
+  })();
 
   /* ---------- tabs ---------- */
   const tabBtns = $$(".tab");
@@ -1108,7 +1251,7 @@
     $("#tab-console").hidden = id!=="console";
     $("#tab-ext").hidden = id!=="ext";
     // leaving a tab stops whatever it was playing
-    if(id!=="ext"){ xAgent.stopReset(); xCust.stopReset(); xMasterState(); }
+    if(id!=="ext") ext.stopAll();
     if(id!=="console"){ cancelVT(); agent.stopReset(); cust.stopReset(); stopAgentMon(); masterState(); }
     try{ localStorage.setItem("arc-tab", id); }catch(e){}
   }
@@ -1163,8 +1306,6 @@
     // channels (outputs + inputs)
     agent.populate(inputs, outputs);
     cust.populate(inputs, outputs);
-    xAgent.populate(inputs, outputs);
-    xCust.populate(inputs, outputs);
 
     // remember inputs so the agent can find the Krisp microphone on play
     allInputs = inputs;
@@ -1208,7 +1349,7 @@
     if(e.code!=="Space") return;
     const card = document.activeElement && document.activeElement.closest && document.activeElement.closest(".card");
     if(card){
-      const ch = {"card-agent":agent, "card-cust":cust, "card-xagent":xAgent, "card-xcust":xCust}[card.id];
+      const ch = {"card-agent":agent, "card-cust":cust}[card.id];
       if(ch){ e.preventDefault(); ch.playBtn.click(); }
     }
   });
