@@ -117,6 +117,10 @@
   .file-name.set{color:var(--text)}
   input[type=file]{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden}
   .hint{font-size:12px; color:var(--muted-2); margin:7px 0 0; line-height:1.45}
+  .playing-on{font-family:var(--mono); font-size:11.5px; color:var(--muted); margin:-4px 0 12px; display:flex; gap:7px; align-items:center}
+  .playing-on b{color:var(--text); font-weight:560}
+  .playing-on::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--muted-2); flex:none}
+  .card.playing .playing-on::before{background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
   .mic-route-hint.route-ok, .mic-route-hint.route-warn, .mic-route-hint.route-err{padding:10px 12px; border-radius:8px; margin-top:9px; display:flex; gap:9px; align-items:flex-start}
   .mic-route-hint.route-ok{border:1px solid rgba(91,209,138,.35); background:rgba(91,209,138,.09); color:#9fe3bb}
   .mic-route-hint.route-warn{border:1px solid rgba(240,162,58,.4); background:rgba(240,162,58,.1); color:#f3c688}
@@ -231,7 +235,7 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Oct 13, 2026 · 10:43
+    Last updated · Oct 13, 2026 · 15:04
   </div>
 
   <header>
@@ -735,6 +739,18 @@
     });
 
     // route playback to the active output (loopback for the agent, speaker for the customer)
+    // live readout of the device the browser reports this player is actually using
+    const playingOn = document.createElement("p");
+    playingOn.className = "playing-on";
+    $(".transport", root).after(playingOn);
+    function showPlayingOn(){
+      const id = SUPPORTS_SINK ? audio.sinkId : "";
+      const dev = id && lastOutputs.find(o=>o.deviceId===id);
+      playingOn.innerHTML = "Playing on: <b></b>";
+      playingOn.querySelector("b").textContent = dev ? dev.label : id ? "unknown device" : "system default output";
+    }
+    showPlayingOn();
+
     async function applySink(){
       if(!SUPPORTS_SINK) return;
       const id = currentSink();
@@ -746,6 +762,7 @@
           "Couldn't route to that device ("+(err.name||"error")+"). It may be in use — try another.";
         sinkNote.classList.add("show");
       }
+      showPlayingOn();
     }
     let userPickedOut = false;  // once the user picks a speaker, stop auto-selecting Krisp
     if(sel) sel.addEventListener("change", ()=>{ userPickedOut = true; applySink(); });
@@ -801,7 +818,7 @@
         : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>';
     }
     function pauseUI(){ root.classList.remove("playing"); setPlayIcon(false); }
-    audio.addEventListener("play", ()=>{ root.classList.add("playing"); setPlayIcon(true); });
+    audio.addEventListener("play", ()=>{ root.classList.add("playing"); setPlayIcon(true); showPlayingOn(); });
     audio.addEventListener("pause", pauseUI);
     audio.addEventListener("ended", ()=>{ if(!loopOn){ pauseUI(); } });
 
