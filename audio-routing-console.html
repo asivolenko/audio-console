@@ -211,32 +211,6 @@
   .tabpanel[hidden]{display:none}
   .tab-intro{color:var(--muted); font-size:14px; margin:18px 0 0; max-width:82ch}
 
-  /* extension mode: simulated call */
-  .call{margin-top:16px; padding:16px; border:1px solid var(--line); border-radius:var(--r); background:#0b0d13}
-  .call-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; font-family:var(--mono); font-size:12px; color:var(--muted)}
-  .call-state{display:flex; align-items:center; gap:9px}
-  .call-state .led{width:9px; height:9px; border-radius:50%; background:var(--muted-2)}
-  .call-state.live{color:var(--text)}
-  .call-state.live .led{background:var(--err); box-shadow:0 0 0 4px rgba(255,107,107,.18); animation:pulse 1.4s infinite}
-  .call-timer{color:var(--text)}
-  .tiles{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  .tile{--lvl:0; position:relative; aspect-ratio:16/9; border-radius:12px; background:var(--surface-2); display:grid; place-items:center; outline:2px solid transparent; outline-offset:-2px; transition:outline-color .12s}
-  .tile.t-agent{--accent:var(--agent); --accent-soft:var(--agent-soft)}
-  .tile.t-cust{--accent:var(--cust); --accent-soft:var(--cust-soft)}
-  .tile.speaking{outline-color:var(--accent)}
-  .avatar{width:76px; height:76px; border-radius:50%; background:var(--accent); color:#15171e; font-size:30px; font-weight:700; display:grid; place-items:center; box-shadow:0 0 0 calc(var(--lvl)*18px) var(--accent-soft)}
-  .call:not(.live) .avatar{opacity:.45}
-  .tile-name{position:absolute; left:12px; bottom:10px; font-size:13px; font-weight:600; padding:3px 8px; border-radius:6px; background:rgba(0,0,0,.35)}
-  .tile-muted{position:absolute; right:10px; top:10px; display:inline-flex; gap:6px; align-items:center; font-size:12px; color:#ffb3b3; background:rgba(255,107,107,.15); padding:4px 8px; border-radius:6px}
-  .tile-muted[hidden]{display:none}
-  .tile-muted svg{width:14px; height:14px}
-  .call-controls{display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin-top:16px}
-  .cbtn{width:44px; height:44px; border-radius:50%; border:1px solid var(--line); background:var(--surface-2); display:inline-flex; align-items:center; justify-content:center}
-  .cbtn svg{width:18px; height:18px}
-  .cbtn[disabled]{opacity:.4; cursor:not-allowed}
-  .cbtn[aria-pressed="true"]{background:var(--err); border-color:var(--err); color:#15171e}
-  .btn.join{background:var(--ok)} .btn.leave{background:var(--err)}
-  @media(max-width:560px){ .tiles{grid-template-columns:1fr} }
 
   .foot{margin-top:30px; font-family:var(--mono); font-size:11px; color:var(--muted-2); letter-spacing:.04em; text-align:center; line-height:1.7}
   kbd{font-family:var(--mono); background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:11px; color:var(--text)}
@@ -480,88 +454,149 @@
 
   </section>
 
-  <!-- EXTENSION MODE: simulated browser call -->
+  <!-- EXTENSION MODE: plain audio player, no mic or call streams -->
   <section class="tabpanel" id="tab-ext" role="tabpanel" hidden>
-    <p class="tab-intro">Simulates a browser call app like Google Meet, for demos where the Krisp desktop app isn't installed. Joining opens <strong>VB-Cable</strong> as the call microphone and connects a real WebRTC call inside this page: the agent recording is your outgoing voice, and the customer recording arrives as the other participant.</p>
+    <p class="tab-intro">For demos with the Krisp browser extension, when the Krisp desktop app isn't installed. This tab only plays audio: the agent recording goes into the VB-Cable speaker and the customer recording plays on the speaker you pick. It doesn't open any microphone or call streams.</p>
 
-    <div class="call" id="xCall">
-      <div class="call-top">
-        <span class="call-state" id="xState"><span class="led"></span><span id="xStateText">Not in call</span></span>
-        <span class="call-timer" id="xTimer">00:00</span>
+  <div class="channels">
+
+    <section class="card agent" id="card-xagent">
+      <div class="card-head">
+        <span class="chan-tag">CH 1</span>
+        <span class="chan-title">Agent</span>
       </div>
-      <div class="tiles">
-        <div class="tile t-agent" id="xTileAgent">
-          <div class="avatar">A</div>
-          <span class="tile-name">Agent (you)</span>
-          <span class="tile-muted" id="xMuteBadge" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg> Muted</span>
-        </div>
-        <div class="tile t-cust" id="xTileCust">
-          <div class="avatar">C</div>
-          <span class="tile-name">Customer</span>
+      <p class="sub">Plays the agent recording into the VB-Cable speaker, so a browser call app using VB-Cable as its microphone hears it as the agent.</p>
+
+      <div class="field">
+        <label>Recording</label>
+        <div class="filebox">
+          <label class="btn ghost file-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Choose file
+            <input type="file" accept="audio/*" class="file-input">
+          </label>
+          <span class="file-name">No file selected</span>
         </div>
       </div>
-      <div class="call-controls">
-        <button class="cbtn" id="xMute" aria-pressed="false" aria-label="Mute microphone" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></button>
-        <button class="btn" id="xPlay" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg> Play both</button>
-        <button class="btn ghost" id="xStop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg> Stop</button>
-        <button class="btn join" id="xJoin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg> Join call</button>
+
+      <div class="flow" aria-hidden="true">
+        <span class="node"><span class="pip"></span>Source</span>
+        <span class="line"></span>
+        <span class="node">Mic<span class="pip"></span></span>
       </div>
-    </div>
 
-    <div class="notice err" id="xNote">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span id="xNoteText"></span>
-    </div>
+      <div class="field">
+        <label>Agent microphone — your call app's input</label>
+        <div class="dev-fixed dev-mic muted">Loading audio devices…</div>
+        <p class="hint mic-route-hint">Select VB-Cable as the microphone in your browser call app.</p>
+      </div>
 
-    <div class="channels">
-      <section class="card agent">
-        <div class="card-head">
-          <span class="chan-tag">Outgoing</span>
-          <span class="chan-title">Agent</span>
+      <div class="transport">
+        <button class="tbtn play btn-play" disabled aria-label="Play agent recording">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        </button>
+        <button class="tbtn btn-stop" disabled aria-label="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        </button>
+        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <div class="scrub">
+          <span class="time t-cur">0:00</span>
+          <div class="track"><div class="fill"></div></div>
+          <span class="time t-dur">0:00</span>
         </div>
-        <p class="sub">Plays into the VB-Cable speaker, so the call hears it through the VB-Cable microphone.</p>
-        <div class="field">
-          <label>Recording</label>
-          <div class="filebox">
-            <label class="btn ghost file-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Choose file
-              <input type="file" accept="audio/*" id="xAgentFile">
-            </label>
-            <span class="file-name" id="xAgentName">No file selected</span>
-          </div>
-        </div>
-        <div class="field">
-          <label>Call microphone</label>
-          <div class="dev-fixed muted" id="xMic">Loading audio devices…</div>
-          <p class="hint mic-route-hint" id="xMicHint">The simulated call uses VB-Cable as its microphone.</p>
-        </div>
-      </section>
+      </div>
 
-      <section class="card cust">
-        <div class="card-head">
-          <span class="chan-tag">Incoming</span>
-          <span class="chan-title">Customer</span>
+      <div class="vol">
+        Level
+        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Agent volume">
+      </div>
+
+      <audio class="player" preload="metadata"></audio>
+      <div class="notice err sink-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+      </div>
+    </section>
+
+    <section class="card cust" id="card-xcust">
+      <div class="card-head">
+        <span class="chan-tag">CH 2</span>
+        <span class="chan-title">Customer</span>
+      </div>
+      <p class="sub">Plays the customer recording to whatever you want to listen on — your speakers, headset, or a second monitoring output.</p>
+
+      <div class="field">
+        <label>Recording</label>
+        <div class="filebox">
+          <label class="btn ghost file-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Choose file
+            <input type="file" accept="audio/*" class="file-input">
+          </label>
+          <span class="file-name">No file selected</span>
         </div>
-        <p class="sub">Sent over the call as the other participant's voice, then played on the speaker below.</p>
-        <div class="field">
-          <label>Recording</label>
-          <div class="filebox">
-            <label class="btn ghost file-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Choose file
-              <input type="file" accept="audio/*" id="xCustFile">
-            </label>
-            <span class="file-name" id="xCustName">No file selected</span>
-          </div>
+      </div>
+
+      <div class="flow" aria-hidden="true">
+        <span class="node"><span class="pip"></span>Source</span>
+        <span class="line"></span>
+        <span class="node">Output<span class="pip"></span></span>
+      </div>
+
+      <div class="field">
+        <label>Output device — speakers / headset</label>
+        <select class="dev-out" disabled><option>Loading audio devices…</option></select>
+        <p class="hint">Pick the speaker to play the customer recording on.</p>
+      </div>
+
+      <div class="transport">
+        <button class="tbtn play btn-play" disabled aria-label="Play customer recording">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        </button>
+        <button class="tbtn btn-stop" disabled aria-label="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        </button>
+        <button class="tbtn toggle btn-loop" aria-pressed="false" aria-label="Loop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <div class="scrub">
+          <span class="time t-cur">0:00</span>
+          <div class="track"><div class="fill"></div></div>
+          <span class="time t-dur">0:00</span>
         </div>
-        <div class="field">
-          <label>Call speaker</label>
-          <select id="xSpk" disabled><option>Loading audio devices…</option></select>
-        </div>
-        <label class="checkbox"><input type="checkbox" id="xHearAgent"> Also hear the agent as the customer hears it</label>
-      </section>
+      </div>
+
+      <div class="vol">
+        Level
+        <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Customer volume">
+      </div>
+
+      <audio class="player" preload="metadata"></audio>
+      <div class="notice err sink-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This browser can't switch output devices, so audio will play on the system default. Chrome or Edge support per-device output.</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="master">
+    <div class="master-label">
+      <span class="mtag">Both channels</span>
+      Play the agent and customer recordings together, in sync.
     </div>
+    <div class="master-actions">
+      <button id="xPlayBoth" class="btn" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg>
+        Play both
+      </button>
+      <button id="xStopBoth" class="btn ghost" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        Stop both
+      </button>
+    </div>
+  </div>
   </section>
 
   <p class="foot">
@@ -644,7 +679,8 @@
     return g || null;
   }
 
-  function Channel(root, onChange){
+  function Channel(root, onChange, opts={}){
+    const preferKrisp = opts.preferKrisp !== false;
     const audio = $(".player", root);
     const sel   = $(".dev-out", root);     // Customer channel only (speakers)
     const micEl = $(".dev-mic", root);     // Agent channel only (fixed VB-Cable mic)
@@ -816,7 +852,7 @@
       populate(inputs, outputs){
         lastOutputs = outputs;
         fillSelect(sel, outputs, "output");
-        if(sel && !userPickedOut){
+        if(sel && preferKrisp && !userPickedOut){
           const krisp = outputs.find(d=>/krisp/i.test(d.label) && /speaker/i.test(d.label))
                      || outputs.find(d=>/krisp/i.test(d.label));
           if(krisp) sel.value = krisp.deviceId;
@@ -1026,214 +1062,27 @@
     return "Couldn't open that microphone ("+(n||"error")+").";
   }
 
-  /* ---------- Extension mode: a simulated browser call (in-page WebRTC loopback) ---------- */
-  const ext = (function(){
-    const callEl = $("#xCall"), stateEl = $("#xState"), stateText = $("#xStateText"), timerEl = $("#xTimer");
-    const joinBtn = $("#xJoin"), muteBtn = $("#xMute"), playBtn = $("#xPlay"), stopBtn = $("#xStop");
-    const note = $("#xNote"), noteText = $("#xNoteText");
-    const micField = $("#xMic"), micHint = $("#xMicHint"), spkSel = $("#xSpk"), hearChk = $("#xHearAgent");
-    const tileA = $("#xTileAgent"), tileC = $("#xTileCust"), muteBadge = $("#xMuteBadge");
-    const PHONE = joinBtn.querySelector("svg").outerHTML;
-
-    const agentEl = new Audio();     // agent recording → VB-Cable speaker
-    const custEl  = new Audio();     // customer recording → WebAudio → sent over the call
-    const remoteEl  = new Audio();   // incoming call audio (customer) → call speaker
-    const monitorEl = new Audio();   // outgoing call audio as received (agent) → muted unless "hear agent"
-    let hasA = false, hasC = false;
-    let cableMic = null, cableOut = null;
-    let ctx = null, custDest = null, micStream = null, pcA = null, pcC = null;
-    let inCall = false, muted = false, t0 = 0, timerId = null, raf = null, meters = [];
-
-    function showErr(msg){ noteText.textContent = msg; note.classList.add("show"); }
-    function clearErr(){ note.classList.remove("show"); }
-    async function setSink(el, id){ if(SUPPORTS_SINK){ try{ await el.setSinkId(id || ""); return true; }catch(e){ return false; } } return false; }
-
-    function bindFile(input, el, nameEl, set){
-      input.addEventListener("change", ()=>{
-        const f = input.files && input.files[0];
-        if(!f) return;
-        if(el._url) URL.revokeObjectURL(el._url);
-        el._url = URL.createObjectURL(f); el.src = el._url; el.load();
-        nameEl.textContent = f.name; nameEl.classList.add("set");
-        set(); sync();
-      });
-    }
-    bindFile($("#xAgentFile"), agentEl, $("#xAgentName"), ()=>{ hasA = true; });
-    bindFile($("#xCustFile"),  custEl,  $("#xCustName"),  ()=>{ hasC = true; });
-
-    // the customer recording only exists inside the call: element → WebAudio → call track
-    function ensureCtx(){
-      if(!ctx){
-        ctx = new (window.AudioContext||window.webkitAudioContext)();
-        custDest = ctx.createMediaStreamDestination();
-        ctx.createMediaElementSource(custEl).connect(custDest);
-      }
-      return ctx;
-    }
-
-    // speaking indicators on the tiles
-    function addMeter(stream, tile){
-      const src = ctx.createMediaStreamSource(stream);
-      const an = ctx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.5;
-      src.connect(an);
-      meters.push({src, an, tile, data:new Float32Array(an.fftSize), peak:0});
-      if(!raf) drawMeters();
-    }
-    function drawMeters(){
-      meters.forEach(m=>{
-        m.an.getFloatTimeDomainData(m.data);
-        let sum = 0; for(let i=0;i<m.data.length;i++) sum += m.data[i]*m.data[i];
-        const level = Math.min(1, Math.sqrt(sum/m.data.length)*4);
-        m.peak = Math.max(level, m.peak*0.9);
-        m.tile.style.setProperty("--lvl", m.peak.toFixed(3));
-        m.tile.classList.toggle("speaking", m.peak > 0.06);
-      });
-      raf = requestAnimationFrame(drawMeters);
-    }
-    function clearMeters(){
-      if(raf){ cancelAnimationFrame(raf); raf = null; }
-      meters.forEach(m=>{ try{ m.src.disconnect(); }catch(e){} m.tile.classList.remove("speaking"); m.tile.style.setProperty("--lvl", 0); });
-      meters = [];
-    }
-
-    // Chrome only feeds remote WebRTC audio into WebAudio while it's attached to a media element
-    function attach(el, stream, tile, mute){
-      el.srcObject = stream; el.muted = mute;
-      setSink(el, spkSel.value);
-      el.play().catch(()=>{});
-      addMeter(stream, tile);
-    }
-
-    function tick(){
-      const t = Math.floor((Date.now()-t0)/1000);
-      timerEl.textContent = String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0");
-    }
-
-    async function join(){
-      clearErr();
-      if(!cableMic){ showErr("VB-Cable is not installed, so the call has no microphone. Install it from vb-audio.com/Cable, restart your browser, then click Rescan."); return; }
-      joinBtn.disabled = true; stateText.textContent = "Connecting…";
-      try{
-        await ensureCtx().resume();
-        micStream = await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:cableMic.deviceId}, echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
-        // two ends of one call, connected inside this page: A = agent's browser, C = customer's
-        pcA = new RTCPeerConnection(); pcC = new RTCPeerConnection();
-        pcA.onicecandidate = e=>{ if(e.candidate) pcC.addIceCandidate(e.candidate).catch(()=>{}); };
-        pcC.onicecandidate = e=>{ if(e.candidate) pcA.addIceCandidate(e.candidate).catch(()=>{}); };
-        pcA.ontrack = e=>attach(remoteEl,  e.streams[0] || new MediaStream([e.track]), tileC, false);
-        pcC.ontrack = e=>attach(monitorEl, e.streams[0] || new MediaStream([e.track]), tileA, !hearChk.checked);
-        micStream.getTracks().forEach(t=>pcA.addTrack(t, micStream));
-        const offer = await pcA.createOffer();
-        await pcA.setLocalDescription(offer);
-        await pcC.setRemoteDescription(offer);
-        custDest.stream.getTracks().forEach(t=>pcC.addTrack(t, custDest.stream));   // reuses the offered transceiver → two-way
-        const answer = await pcC.createAnswer();
-        await pcC.setLocalDescription(answer);
-        await pcA.setRemoteDescription(answer);
-        inCall = true; muted = false;
-        t0 = Date.now(); tick(); timerId = setInterval(tick, 1000);
-        if(!cableOut) showErr("VB-Cable wasn't found as a speaker, so the agent recording can't reach the call. Reinstall VB-Cable, then click Rescan.");
-      }catch(err){
-        leave();
-        showErr(err && err.name && /^(NotAllowed|NotFound|NotReadable)Error$/.test(err.name) ? describeGUMError(err) : "Couldn't start the call ("+((err && (err.message||err.name))||"error")+").");
-      }
-      joinBtn.disabled = false;
-      sync();
-    }
-
-    function leave(){
-      [agentEl, custEl].forEach(el=>{ el.pause(); if(el.src) el.currentTime = 0; });
-      if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
-      [pcA, pcC].forEach(pc=>{ if(pc) pc.close(); });
-      pcA = pcC = null;
-      [remoteEl, monitorEl].forEach(el=>{ el.pause(); el.srcObject = null; });
-      clearMeters();
-      if(timerId){ clearInterval(timerId); timerId = null; }
-      timerEl.textContent = "00:00";
-      inCall = false; muted = false;
-      sync();
-    }
-
-    function sync(){
-      callEl.classList.toggle("live", inCall);
-      stateEl.classList.toggle("live", inCall);
-      stateText.textContent = inCall ? "In call" : "Not in call";
-      joinBtn.className = "btn " + (inCall ? "leave" : "join");
-      joinBtn.innerHTML = PHONE + (inCall ? " Leave call" : " Join call");
-      muteBtn.disabled = !inCall;
-      muteBtn.setAttribute("aria-pressed", muted);
-      muteBadge.hidden = !muted;
-      const playing = !agentEl.paused || !custEl.paused;
-      playBtn.disabled = !inCall || !(hasA || hasC);
-      playBtn.innerHTML = playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both";
-      stopBtn.disabled = !inCall || !(hasA || hasC);
-    }
-
-    joinBtn.addEventListener("click", ()=>{ inCall ? leave() : join(); });
-    muteBtn.addEventListener("click", ()=>{
-      muted = !muted;
-      if(micStream) micStream.getAudioTracks().forEach(t=>{ t.enabled = !muted; });
-      sync();
-    });
-    // the agent recording must go into VB-Cable — refuse to play it on the speakers instead
-    async function playAgent(){
-      if(!cableOut || !(await setSink(agentEl, cableOut.deviceId))){
-        showErr("Couldn't send the agent recording to VB-Cable, so it wasn't played. Click Rescan and try again; if it keeps happening, reinstall VB-Cable.");
-        return;
-      }
-      agentEl.play().catch(()=>{});
-    }
-    playBtn.addEventListener("click", ()=>{
-      if(!agentEl.paused || !custEl.paused){ agentEl.pause(); custEl.pause(); }
-      else {
-        if(hasA) playAgent();
-        if(hasC) custEl.play().catch(()=>{});
-      }
-      sync();
-    });
-    stopBtn.addEventListener("click", ()=>{
-      [agentEl, custEl].forEach(el=>{ el.pause(); if(el.src) el.currentTime = 0; });
-      sync();
-    });
-    [agentEl, custEl].forEach(el=>["play","pause","ended"].forEach(ev=>el.addEventListener(ev, sync)));
-    hearChk.addEventListener("change", ()=>{ monitorEl.muted = !hearChk.checked; });
-    spkSel.addEventListener("change", ()=>{ setSink(remoteEl, spkSel.value); setSink(monitorEl, spkSel.value); });
-
-    function populate(inputs, outputs){
-      const cables = inputs.filter(d=>isVBCable(d.label) && d.deviceId!=="default" && d.deviceId!=="communications");
-      cableMic = cables.find(d=>/cable\s*output/i.test(d.label)) || cables[0] || null;
-      // Windows: "CABLE Input" feeds "CABLE Output". macOS: one "VB-Cable" device for both directions
-      cableOut = cableMic ? matchOutputForMic(cableMic, outputs.filter(o=>o.deviceId!=="default")) : null;
-      micField.textContent = cableMic ? cableMic.label : "VB-Cable not found";
-      micField.classList.remove("muted");
-      micField.classList.toggle("missing", !cableMic);
-      if(!cableMic){
-        micHint.innerHTML = 'VB-Cable is not installed. Install it from <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">vb-audio.com/Cable</a>, restart your browser, then click Rescan.';
-        micHint.className = "hint mic-route-hint route-err";
-      } else if(!cableOut){
-        micHint.textContent = "Found “"+cableMic.label+"” as a microphone but not as a speaker, so the agent recording can't reach the call. Reinstall VB-Cable, then click Rescan.";
-        micHint.className = "hint mic-route-hint route-warn";
-      } else {
-        micHint.textContent = "The agent recording plays into the “"+(cableOut.label||"VB-Cable")+"” speaker and the call picks it up from this microphone.";
-        micHint.className = "hint mic-route-hint route-ok";
-      }
-      // call speaker: any real output except VB-Cable itself
-      const prev = spkSel.value;
-      const list = outputs.filter(o=>!isVBCable(o.label));
-      spkSel.innerHTML = "";
-      if(!list.length){ spkSel.innerHTML = '<option value="">No outputs found</option>'; spkSel.disabled = true; return; }
-      list.forEach((d,i)=>{
-        const o = document.createElement("option");
-        o.value = d.deviceId; o.textContent = d.label || "Output "+(i+1)+" (name hidden)";
-        spkSel.appendChild(o);
-      });
-      spkSel.disabled = !SUPPORTS_SINK;
-      if(prev && list.some(d=>d.deviceId===prev)) spkSel.value = prev;
-    }
-
-    sync();
-    return { populate, leave, inCall: ()=>inCall };
-  })();
+  /* ---------- Extension mode: plain playback, no mic or call streams ---------- */
+  const xAgent = Channel($("#card-xagent"), ()=>xMasterState());
+  const xCust  = Channel($("#card-xcust"),  ()=>xMasterState(), {preferKrisp:false});   // Krisp app isn't installed here
+  const xPlayBoth = $("#xPlayBoth"), xStopBoth = $("#xStopBoth");
+  function xMasterState(){
+    const has = xAgent.hasSource() || xCust.hasSource();
+    const playing = xAgent.isPlaying() || xCust.isPlaying();
+    xPlayBoth.disabled = !has; xStopBoth.disabled = !has;
+    xPlayBoth.innerHTML = playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both";
+  }
+  xPlayBoth.addEventListener("click", async ()=>{
+    if(xAgent.isPlaying() || xCust.isPlaying()){ xAgent.pause(); xCust.pause(); xMasterState(); return; }
+    const a = xAgent.hasSource(), c = xCust.hasSource();
+    await Promise.all([ a?xAgent.prepare():null, c?xCust.prepare():null ]);   // route outputs first
+    if(a) xAgent.audio.play().catch(()=>{});
+    if(c) xCust.audio.play().catch(()=>{});
+    xMasterState();
+  });
+  xStopBoth.addEventListener("click", ()=>{ xAgent.stopReset(); xCust.stopReset(); xMasterState(); });
+  [xAgent, xCust].forEach(ch=>["play","pause","ended"].forEach(ev=>ch.audio.addEventListener(ev, xMasterState)));
+  xMasterState();
 
   /* ---------- tabs ---------- */
   const tabBtns = $$(".tab");
@@ -1242,7 +1091,7 @@
     $("#tab-console").hidden = id!=="console";
     $("#tab-ext").hidden = id!=="ext";
     // leaving a tab stops whatever it was playing
-    if(id!=="ext" && ext.inCall()) ext.leave();
+    if(id!=="ext"){ xAgent.stopReset(); xCust.stopReset(); xMasterState(); }
     if(id!=="console"){ cancelVT(); agent.stopReset(); cust.stopReset(); stopAgentMon(); masterState(); }
     try{ localStorage.setItem("arc-tab", id); }catch(e){}
   }
@@ -1297,7 +1146,8 @@
     // channels (outputs + inputs)
     agent.populate(inputs, outputs);
     cust.populate(inputs, outputs);
-    ext.populate(inputs, outputs);
+    xAgent.populate(inputs, outputs);
+    xCust.populate(inputs, outputs);
 
     // remember inputs so the agent can find the Krisp microphone on play
     allInputs = inputs;
@@ -1341,7 +1191,7 @@
     if(e.code!=="Space") return;
     const card = document.activeElement && document.activeElement.closest && document.activeElement.closest(".card");
     if(card){
-      const ch = card.id==="card-agent" ? agent : card.id==="card-cust" ? cust : null;
+      const ch = {"card-agent":agent, "card-cust":cust, "card-xagent":xAgent, "card-xcust":xCust}[card.id];
       if(ch){ e.preventDefault(); ch.playBtn.click(); }
     }
   });
