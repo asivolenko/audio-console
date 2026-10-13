@@ -263,7 +263,7 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Oct 13, 2026 · 15:52
+    Last updated · Oct 13, 2026 · 16:07
   </div>
 
   <header>
@@ -593,6 +593,7 @@
         Start the agent mic if needed, then play both recordings together.
       </div>
       <div class="master-actions">
+        <label class="checkbox vt-delay" title="Opens the mic, waits so you can turn on Voice Translation, and keeps it open the same time after the recordings end"><input type="checkbox" id="xVtDelay"> VT Delay <span class="vt-secs">15s</span></label>
         <button id="xPlayBoth" class="btn" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z"/></svg> Play both</button>
         <button id="xStopBoth" class="btn ghost" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg> Stop both</button>
       </div>
@@ -1142,7 +1143,7 @@
     (function loop(){ recMeter.tick(); outMeter.tick(); cusMeter.tick(); requestAnimationFrame(loop); })();
 
     // ---- players ----
-    function Player(p, fileId, nameId){
+    function Player(p, fileId, nameId, hooks={}){
       const el = new Audio();
       const play = $("#"+p+"Play"), stop = $("#"+p+"Stop"), fill = $("#"+p+"Fill"), cur = $("#"+p+"Cur"), dur = $("#"+p+"Dur"), track = $("#"+p+"Track");
       let has = false, url = null;
@@ -1167,11 +1168,18 @@
         stop(){ el.pause(); if(has) el.currentTime = 0; },
         setEnabled(on){ play.disabled = !(on && has); stop.disabled = !has; }
       };
-      play.addEventListener("click", ()=>{ el.paused ? P.start() : el.pause(); });
-      stop.addEventListener("click", ()=>P.stop());
+      play.addEventListener("click", async ()=>{
+        if(!el.paused){ el.pause(); return; }
+        if(hooks.beforePlay && !(await hooks.beforePlay())) return;
+        P.start();
+      });
+      stop.addEventListener("click", ()=>{ P.stop(); if(hooks.afterStop) hooks.afterStop(); });
       return P;
     }
-    const A = Player("xA","xAgentFile","xAgentName");
+    const A = Player("xA","xAgentFile","xAgentName", {
+      beforePlay: async ()=>{ if(!micOut) await startMic(); return !!micOut; },   // playing the agent needs the mic open
+      afterStop:  ()=>{ cancelVT(); stopMic(); }                                  // Stop closes the mic stream
+    });
     const C = Player("xC","xCustFile","xCustName");
 
     // ---- agent mic: getUserMedia → (Krisp extension) → processed stream ----
@@ -1225,23 +1233,58 @@
       micState.className = "mic-state" + (on ? (processed ? " ok" : " warn") : "");
       micState.textContent = !on ? "Mic off" : processed ? "Mic on · processed by Krisp" : "Mic on · NOT processed by Krisp";
       hearBtn.disabled = !on;
-      A.setEnabled(on);          // the agent recording only means something once the mic is live
+      A.setEnabled(true);
       C.setEnabled(true);
       const has = A.has() || C.has(), playing = A.playing() || C.playing();
-      playBoth.disabled = !has; stopBoth.disabled = !has;
+      stopBoth.disabled = !has && !on && !vtTimer;
+      if(vtTimer) return;        // during a countdown the button label belongs to the VT timer
+      playBoth.disabled = !has;
       playBoth.innerHTML = playing ? PAUSE_SVG+" Pause both" : PLAY_SVG+" Play both";
     }
 
+    // ---- VT Delay: mic open → wait (turn on VT) → play → wait → close the mic ----
+    const vtDelayChk = $("#xVtDelay");
+    let vtTimer = null, vtTick = null, vtActive = false, vtTail = false, vtHadA = false, vtHadC = false;
+    function countdown(label, done){
+      let left = Math.round(VT_DELAY_MS/1000);
+      const paint = ()=>{ playBoth.innerHTML = CLOCK_SVG+" "+label+" · "+left+"s"; };
+      playBoth.disabled = false; paint();
+      vtTick = setInterval(()=>{ left--; if(left>0) paint(); }, 1000);
+      vtTimer = setTimeout(()=>{ clearInterval(vtTick); vtTick = vtTimer = null; done(); sync(); }, VT_DELAY_MS);
+      sync();
+    }
+    function cancelVT(){
+      if(vtTimer){ clearTimeout(vtTimer); vtTimer = null; }
+      if(vtTick){ clearInterval(vtTick); vtTick = null; }
+      vtActive = vtTail = false;
+      sync();
+    }
+    function checkTail(){
+      if(!vtActive || vtTimer || vtTail) return;
+      if((!vtHadA || A.el.ended) && (!vtHadC || C.el.ended)){
+        vtTail = true;
+        countdown("Wrapping up", ()=>{ vtActive = vtTail = false; stopMic(); });
+      }
+    }
+    A.el.addEventListener("ended", checkTail);
+    C.el.addEventListener("ended", checkTail);
+
     playBoth.addEventListener("click", async ()=>{
+      if(vtTimer){ cancelVT(); stopMic(); return; }                  // pressing during a countdown cancels
       if(A.playing() || C.playing()){ A.pause(); C.pause(); return; }
-      if(A.has() && !micOut) await startMic();
-      if(A.has() && micOut) A.start();
-      if(C.has()) C.start();
+      const a = A.has(), c = C.has();
+      if(a && !micOut) await startMic();
+      const go = ()=>{ if(a && micOut) A.start(); if(c) C.start(); };
+      if(vtDelayChk.checked){
+        vtActive = true; vtTail = false; vtHadA = a; vtHadC = c;
+        countdown("Cancel", go);                                     // streams are on: turn on VT now
+      } else go();
     });
-    stopBoth.addEventListener("click", ()=>{ A.stop(); C.stop(); });
+    // Stop both: stop the recordings, cancel any countdown and close the mic stream
+    stopBoth.addEventListener("click", ()=>{ cancelVT(); A.stop(); C.stop(); stopMic(); });
 
     sync();
-    return { stopAll(){ A.stop(); C.stop(); stopMic(); } };
+    return { stopAll(){ cancelVT(); A.stop(); C.stop(); stopMic(); } };
   })();
 
   /* ---------- tabs ---------- */
