@@ -207,6 +207,16 @@
   .vt-delay .vt-secs{font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:2px 6px; margin-left:2px}
   @media(max-width:560px){ .master-actions{flex:1 1 100%; flex-wrap:wrap} .master-actions .btn{flex:1; justify-content:center} .vt-delay{flex:1 1 100%; justify-content:center} }
 
+  /* agent debug panel */
+  details.debug{margin-top:16px; border:1px dashed var(--line); border-radius:var(--r-sm); padding:10px 12px; background:rgba(16,18,25,.5)}
+  details.debug>summary{cursor:pointer; font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+  .debug .dbg-row{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:10px}
+  .debug select{width:auto; flex:1 1 220px; padding:8px 34px 8px 10px; font-size:12px}
+  .debug .btn{padding:8px 14px; font-size:13px}
+  .debug pre{font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:pre-wrap; margin:10px 0 0; line-height:1.55}
+  .debug .dbg-links a{display:inline-block; margin:8px 12px 0 0; font-family:var(--mono); font-size:12px; color:var(--focus)}
+  .debug .clip{color:#ffb3b3}
+
   /* tabs */
   .tabs{display:flex; gap:6px; margin-top:22px; border-bottom:1px solid var(--line)}
   .tab{padding:11px 16px; font-size:14px; font-weight:620; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px}
@@ -263,7 +273,7 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Nov 3, 2026 · 17:28
+    Last updated · Nov 3, 2026 · 18:08
   </div>
 
   <header>
@@ -395,6 +405,23 @@
         Level
         <input type="range" class="vol-range" min="0" max="100" value="100" aria-label="Agent volume">
       </div>
+
+      <details class="debug" id="agentDebug">
+        <summary>Debug audio path</summary>
+        <div class="dbg-row">
+          <select id="dbgEngine" aria-label="Playback engine">
+            <option value="element">Playback: audio element (default)</option>
+            <option value="webaudio">Playback: Web Audio, large buffer</option>
+          </select>
+          <span class="hint" style="margin:0">Changing it reloads the page.</span>
+        </div>
+        <div class="dbg-row">
+          <label class="checkbox"><input type="checkbox" id="dbgKrisp" checked> Also record the Krisp mic</label>
+          <button class="btn ghost" id="dbgRecord">Record test</button>
+        </div>
+        <pre id="dbgInfo">Load an agent recording, then press Record test: it plays the recording from the start and records what arrives on the selected mic (and on the Krisp mic), so you can hear where the distortion starts.</pre>
+        <div class="dbg-links" id="dbgLinks"></div>
+      </details>
 
       <audio class="player" preload="metadata"></audio>
       <div class="notice err sink-note">
@@ -732,12 +759,24 @@
     });
 
     // route playback to the active output (loopback for the agent, speaker for the customer)
+    // Debug option (agent only): play through Web Audio with a large output buffer instead of the audio element.
+    // Low-latency browser output with small buffers is a known cause of crackling on virtual cables.
+    const engine = micEl ? (()=>{ try{ return localStorage.getItem("arc-agent-engine") || "element"; }catch(e){ return "element"; } })() : "element";
+    let wa = null;
+    if(engine === "webaudio" && window.AudioContext && "setSinkId" in AudioContext.prototype){
+      wa = new AudioContext({ latencyHint: "playback" });
+      wa.createMediaElementSource(audio).connect(wa.destination);
+      audio.addEventListener("play", ()=>wa.resume().catch(()=>{}));
+    }
+    const sinkTarget = wa || audio;
+
     // live readout of the device the browser reports this player is actually using
     const playingOn = document.createElement("p");
     playingOn.className = "playing-on";
     $(".transport", root).after(playingOn);
     function showPlayingOn(){
-      const id = SUPPORTS_SINK ? audio.sinkId : "";
+      const raw = SUPPORTS_SINK ? sinkTarget.sinkId : "";
+      const id = typeof raw === "string" ? raw : "";
       const dev = id && lastOutputs.find(o=>o.deviceId===id);
       playingOn.innerHTML = "Playing on: <b></b>";
       playingOn.querySelector("b").textContent = dev ? dev.label : id ? "unknown device" : "system default output";
@@ -748,7 +787,8 @@
       if(!SUPPORTS_SINK) return;
       const id = currentSink();
       try{
-        await audio.setSinkId(id || "");
+        await sinkTarget.setSinkId(id || "");
+        if(wa) await wa.resume().catch(()=>{});
         sinkNote.classList.remove("show");
       }catch(err){
         sinkNote.querySelector("span").textContent =
@@ -864,6 +904,11 @@
       hasSource: ()=>hasSource,
       isPlaying: ()=>!audio.paused,
       prepare: applySink,
+      engine: ()=>(wa ? "webaudio" : "element"),
+      webAudio: ()=>wa,
+      sinkId: ()=>currentSink(),
+      micDevice: ()=>micDev,
+      outputLabel: id=>(lastOutputs.find(o=>o.deviceId===id)||{}).label,
       warm,
       pause: ()=>audio.pause(),
       stopReset: ()=>{ audio.pause(); audio.currentTime=0; },
@@ -1081,6 +1126,121 @@
     if(n==="NotReadableError")return "The microphone is in use by another app. Close it and try again.";
     return "Couldn't open that microphone ("+(n||"error")+").";
   }
+
+  /* ---------- agent: debug the audio path (Krisp app tab) ---------- */
+  (function(){
+    const engineSel = $("#dbgEngine"), recBtn = $("#dbgRecord"), info = $("#dbgInfo"), links = $("#dbgLinks"), krispChk = $("#dbgKrisp");
+    engineSel.value = agent.engine();
+    engineSel.addEventListener("change", ()=>{
+      try{ localStorage.setItem("arc-agent-engine", engineSel.value); }catch(e){}
+      location.reload();
+    });
+    const dbStr = x => x > 0 ? (20*Math.log10(x)).toFixed(1)+" dB" : "-inf";
+    function stats(chunks){
+      let peak = 0, sum = 0, n = 0, clipped = 0;
+      for(const c of chunks) for(let i=0;i<c.length;i++){ const v = Math.abs(c[i]); peak = Math.max(peak, v); sum += v*v; n++; if(v >= 0.99) clipped++; }
+      return { peak, rms: Math.sqrt(sum/Math.max(1,n)), clipped, seconds: n };
+    }
+    function wavUrl(chunks, rate){
+      let n = 0; for(const c of chunks) n += c.length;
+      const b = new ArrayBuffer(44 + n*2), v = new DataView(b);
+      const w = (o, t) => { for(let i=0;i<t.length;i++) v.setUint8(o+i, t.charCodeAt(i)); };
+      w(0,"RIFF"); v.setUint32(4,36+n*2,true); w(8,"WAVE"); w(12,"fmt "); v.setUint32(16,16,true); v.setUint16(20,1,true);
+      v.setUint16(22,1,true); v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+      w(36,"data"); v.setUint32(40,n*2,true);
+      let o = 44; for(const c of chunks) for(let i=0;i<c.length;i++,o+=2) v.setInt16(o, Math.max(-1, Math.min(1, c[i]))*0x7fff, true);
+      return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+    }
+    async function openRaw(deviceId){
+      return navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    }
+    let running = false, stopNow = null;
+    recBtn.addEventListener("click", async ()=>{
+      if(running){ stopNow && stopNow(); return; }
+      if(!agent.hasSource()){ info.textContent = "Load an agent recording first."; return; }
+      const mic = agent.micDevice();
+      if(!mic){ info.textContent = "Select a microphone first."; return; }
+      running = true; recBtn.textContent = "Stop"; links.innerHTML = ""; info.textContent = "Starting…";
+      const ctx = new AudioContext({ sampleRate: 48000 });
+      const streams = [];
+      try{
+        const code = "class R extends AudioWorkletProcessor{constructor(){super();this.on=true;this.port.onmessage=e=>{if(e.data==='stop'){this.on=false;this.port.postMessage('done')}}}process(i){if(this.on&&i[0]&&i[0][0])this.port.postMessage(i[0][0].slice(0));return true}}registerProcessor('dbg-rec',R)";
+        await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: "application/javascript" })));
+        const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+        const taps = [];
+        const tap = async (name, file, deviceId) => {
+          const st = await openRaw(deviceId); streams.push(st);
+          const tr = st.getAudioTracks()[0];
+          const node = new AudioWorkletNode(ctx, "dbg-rec"); const chunks = [];
+          node.port.onmessage = e => { if(e.data !== "done") chunks.push(e.data); };
+          ctx.createMediaStreamSource(st).connect(node); node.connect(sink);
+          taps.push({ name, file, label: tr.label, settings: tr.getSettings(), node, chunks });
+        };
+        await tap("selected mic", "selected-mic-received.wav", mic.deviceId);
+        const krisp = krispChk.checked ? findKrispMic() : null;
+        if(krisp && krisp.deviceId !== mic.deviceId) await tap("Krisp mic", "krisp-mic-output.wav", krisp.deviceId);
+        const krispLine = !krispChk.checked ? "Krisp mic: not recorded (unticked)" : krisp ? null : "Krisp mic: not found (is the Krisp app running?)";
+
+        // the file itself and the output device, for the report
+        const fileBuf = await (await fetch(agent.audio.currentSrc)).arrayBuffer();
+        // decodeAudioData converts to the context's rate, so read a WAV's real format from its header
+        const hdr = new DataView(fileBuf);
+        let fileFmt = "not a WAV (decoded at " + ctx.sampleRate + " Hz)";
+        if(fileBuf.byteLength > 44 && hdr.getUint32(0) === 0x52494646 && hdr.getUint32(8) === 0x57415645){
+          for(let off = 12; off + 8 <= fileBuf.byteLength;){
+            const id = hdr.getUint32(off), len = hdr.getUint32(off + 4, true);
+            if(id === 0x666d7420){ fileFmt = hdr.getUint32(off + 12, true) + " Hz, " + hdr.getUint16(off + 22, true) + "-bit WAV"; break; }
+            off += 8 + len + (len % 2);
+          }
+        }
+        const decoded = await ctx.decodeAudioData(fileBuf.slice(0));
+        let filePeak = 0; for(let ch=0; ch<decoded.numberOfChannels; ch++){ const d = decoded.getChannelData(ch); for(let i=0;i<d.length;i++) filePeak = Math.max(filePeak, Math.abs(d[i])); }
+        const sinkId = agent.sinkId();
+        let deviceRate = "?";
+        try{ const probe = new AudioContext({ sinkId }); deviceRate = probe.sampleRate; await probe.close(); }catch(e){ deviceRate = "unknown ("+e.name+")"; }
+
+        // play the agent recording from the start through the normal page path
+        info.textContent = "Recording… (plays the agent recording once)";
+        agent.stopReset(); await agent.prepare();
+        await new Promise(res => {
+          let done = false;
+          const finish = () => { if(done) return; done = true; setTimeout(res, 1000); };
+          stopNow = finish;
+          agent.audio.addEventListener("ended", finish, { once: true });
+          agent.audio.play().catch(finish);
+        });
+        agent.audio.pause();
+        for(const t of taps){ await new Promise(r => { t.node.port.onmessage = e => { if(e.data === "done") r(); else t.chunks.push(e.data); }; t.node.port.postMessage("stop"); }); }
+
+        const wa = agent.webAudio();
+        const lines = [
+          "File:      " + fileFmt + ", " + decoded.numberOfChannels + " ch, " + decoded.duration.toFixed(1) + " s, peak " + dbStr(filePeak),
+          "Playback:  " + (agent.engine() === "webaudio" ? "Web Audio, large buffer" + (wa ? " (base " + (wa.baseLatency*1000).toFixed(0) + " ms, output " + ((wa.outputLatency||0)*1000).toFixed(0) + " ms)" : "") : "audio element"),
+          "Output:    " + (agent.outputLabel(sinkId) || "system default") + " · device rate " + deviceRate + " Hz",
+          "Recorder:  " + ctx.sampleRate + " Hz",
+          "Ongoing call ticked: " + $("#ongoingCall").checked + " (unticked = the page also opens the Krisp mic while playing)",
+        ];
+        if(krispLine) lines.push(krispLine);
+        for(const t of taps){
+          const s = stats(t.chunks);
+          lines.push(t.name + ": " + t.label + " · track " + (t.settings.sampleRate || "?") + " Hz, " + (t.settings.channelCount || "?") + " ch · peak " + dbStr(s.peak) + ", RMS " + dbStr(s.rms) +
+            (s.clipped ? " · CLIPPED SAMPLES: " + s.clipped : " · no clipping"));
+          const a = document.createElement("a"); a.href = wavUrl(t.chunks, ctx.sampleRate); a.download = t.file; a.textContent = "⬇ " + t.file;
+          links.appendChild(a);
+        }
+        const report = lines.join("\n");
+        info.textContent = report;
+        const r = document.createElement("a"); r.href = URL.createObjectURL(new Blob([report + "\n\nUser agent: " + navigator.userAgent], { type: "text/plain" })); r.download = "audio-path-report.txt"; r.textContent = "⬇ audio-path-report.txt";
+        links.appendChild(r);
+      }catch(err){
+        info.textContent = "Test failed: " + (err.name || "") + " " + (err.message || err);
+      }finally{
+        streams.forEach(st => st.getTracks().forEach(t => t.stop()));
+        ctx.close().catch(()=>{});
+        running = false; stopNow = null; recBtn.textContent = "Record test";
+      }
+    });
+  })();
 
   /* ---------- Extension mode: drive the Krisp Chrome extension ---------- */
   const ext = (function(){
