@@ -263,7 +263,7 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Oct 13, 2026 · 16:07
+    Last updated · Nov 3, 2026 · 16:29
   </div>
 
   <header>
@@ -653,38 +653,26 @@
   }
   const SILENCE_URL = silentWavUrl(1);
 
-  // Recognise loopback / virtual-cable devices so an agent mic can be paired
-  // with the output that actually feeds it. True loopbacks only — this avoids
-  // mis-pairing devices like Krisp, whose virtual mic is NOT wired to its
-  // virtual speaker.
-  const LOOPBACK_RE = /(blackhole|black hole|vb-?audio|vb-?cable|cable\s*(in|out)|loopback|soundflower|virtual.*(cable|loopback)|aggregate)/i;
-  const isLoopback = l => LOOPBACK_RE.test(l||"");
-  // VB-Cable only — the agent input list is restricted to this, since routing works solely through it
-  const VBCABLE_RE = /(vb-?audio|vb-?cable|cable\s*(in|out)put)/i;
-  const isVBCable = l => VBCABLE_RE.test(l||"");
-  function matchOutputForMic(mic, outputs){
-    if(!mic || !isLoopback(mic.label)) return null;   // only a loopback mic can be fed by an output
-    // VB-Cable: the "CABLE Output" recording device is fed by the "CABLE Input" playback device
-    if(/cable\s*output/i.test(mic.label)){
-      const m = outputs.find(o=>/cable\s*input/i.test(o.label||""));
-      if(m) return m;
-    }
-    // Same loopback family on both ends (BlackHole, Soundflower, Loopback, VB-Audio…)
-    const key = (mic.label||"").toLowerCase().match(/blackhole|soundflower|loopback|vb-?cable|vb-?audio/);
-    if(key){
-      const m = outputs.find(o=>isLoopback(o.label) && (o.label||"").toLowerCase().includes(key[0]));
-      if(m) return m;
-    }
-    // last resort: an output in the same device group — but only if it's itself a loopback
-    const g = outputs.find(o=>o.groupId && mic.groupId && o.groupId===mic.groupId && isLoopback(o.label));
-    return g || null;
+  // The standard VB-Cable only: on Windows the "CABLE Input" speaker feeds the "CABLE Output" mic; on macOS it's
+  // one "VB-Cable" device. Systems can also have VB-Audio's 16-channel "CABLE In 16ch" endpoint, Cable A/B or
+  // VoiceMeeter, and Chrome lists "Default - …" / "Communications - …" shortcuts to whichever device is the system
+  // default. Picking any of those breaks the audio, so they're never used.
+  const isRealDevice = d => d.deviceId !== "default" && d.deviceId !== "communications" && !/16\s*ch/i.test(d.label||"");
+  function pickVbCable(inputs, outputs){
+    const first = (list, ...res) => { for(const re of res){ const d = list.find(x=>isRealDevice(x) && re.test(x.label||"")); if(d) return d; } return null; };
+    const winMic = first(inputs, /^cable output \(vb-audio virtual cable\)/i, /^cable output\b/i);
+    if(winMic) return { mic: winMic, out: first(outputs, /^cable input \(vb-audio virtual cable\)/i, /^cable input\b/i) };
+    const macMic = first(inputs, /^vb-cable\b/i);
+    if(macMic) return { mic: macMic, out: first(outputs, /^vb-cable\b/i) };
+    return { mic: null, out: null };
   }
 
   function Channel(root, onChange){
     const audio = $(".player", root);
     const sel   = $(".dev-out", root);     // Customer channel only (speakers)
     const micEl = $(".dev-mic", root);     // Agent channel only (fixed VB-Cable mic)
-    let micDev = null;                     // the detected VB-Cable input, or null
+    let micDev = null;                     // the VB-Cable mic ("CABLE Output"), or null
+    let cableOut = null;                   // the VB-Cable speaker that feeds it ("CABLE Input"), or null
     const micHint = $(".mic-route-hint", root);
     const play  = $(".btn-play", root);
     const stop  = $(".btn-stop", root);
@@ -705,13 +693,10 @@
     const notify = ()=>{ if(onChange) onChange(); };
 
     // Output device playback is routed to. Customer: the chosen speaker.
-    // Agent: the output that feeds the chosen mic (a loopback) if one exists,
+    // Agent: the VB-Cable speaker that feeds the VB-Cable mic,
     // otherwise "" which means the browser's default output.
     function currentSink(){
-      if(micEl){
-        const match = micDev ? matchOutputForMic(micDev, lastOutputs) : null;
-        return match ? match.deviceId : "";
-      }
+      if(micEl) return cableOut ? cableOut.deviceId : "";
       return sel ? sel.value : "";
     }
 
@@ -785,7 +770,7 @@
         micHint.className = "hint mic-route-hint route-err";
         return;
       }
-      const match = matchOutputForMic(micDev, lastOutputs);
+      const match = cableOut;
       if(match){
         micHint.textContent = "Playing into \u201C"+(match.label||"output")+"\u201D, which feeds this mic. Pick the same device as the input in your call app or System Settings.";
         micHint.className = "hint mic-route-hint route-ok";
@@ -871,8 +856,7 @@
           if(krisp) sel.value = krisp.deviceId;
         }
         if(micEl){
-          const cables = inputs.filter(d=>isVBCable(d.label));
-          micDev = cables.find(d=>/cable\s*output/i.test(d.label)) || cables[0] || null;
+          ({ mic: micDev, out: cableOut } = pickVbCable(inputs, outputs));
           micEl.textContent = micDev ? micDev.label : "VB-Cable not found";
           micEl.classList.remove("muted");
           micEl.classList.toggle("missing", !micDev);
