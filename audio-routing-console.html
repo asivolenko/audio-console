@@ -273,7 +273,7 @@
 
   <div class="updated">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Last updated · Nov 3, 2026 · 18:08
+    Last updated · Nov 6, 2026 · 11:15
   </div>
 
   <header>
@@ -362,8 +362,8 @@
 
       <div class="field">
         <label>Agent microphone — your call app's input</label>
-        <select class="dev-mic" disabled><option>Loading audio devices…</option></select>
-        <p class="hint mic-route-hint">Defaults to VB-Cable. Pick another microphone to debug it; the recording is played into whatever feeds that mic.</p>
+        <div class="dev-fixed dev-mic muted">Loading audio devices…</div>
+        <p class="hint mic-route-hint">Uses VB-Cable as the agent microphone in your softphone or meeting app.</p>
       </div>
 
       <div class="field">
@@ -693,25 +693,13 @@
     if(macMic) return { mic: macMic, out: first(outputs, /^vb-cable\b/i) };
     return { mic: null, out: null };
   }
-  // The speaker that feeds `mic`: VB-Cable's own pair, else a same-named true loopback (BlackHole, Soundflower,
-  // Loopback). Real mics and app devices (Teams, Zoom…) have none, so the recording then plays on the default output.
-  const baseLabel = l => (l||"").replace(/^(default|communications)\s*-\s*/i, "");
-  function outputFeeding(mic, inputs, outputs){
-    if(!mic) return null;
-    const vb = pickVbCable(inputs, outputs);
-    if(vb.mic && baseLabel(mic.label) === vb.mic.label) return vb.out;
-    if(!/blackhole|soundflower|loopback/i.test(mic.label||"")) return null;
-    return outputs.find(o=>isRealDevice(o) && o.label && o.label === baseLabel(mic.label)) || null;
-  }
 
   function Channel(root, onChange){
     const audio = $(".player", root);
     const sel   = $(".dev-out", root);     // Customer channel only (speakers)
-    const micEl = $(".dev-mic", root);     // Agent channel only (microphone list, VB-Cable by default)
-    let micDev = null;                     // the selected mic, or null
-    let cableOut = null;                   // the speaker that feeds it (VB-Cable: "CABLE Input"), or null
-    let lastInputs = [];
-    let userPickedMic = false;             // once the user picks a mic, stop auto-selecting VB-Cable
+    const micEl = $(".dev-mic", root);     // Agent channel only (fixed VB-Cable mic)
+    let micDev = null;                     // the VB-Cable mic ("CABLE Output"), or null
+    let cableOut = null;                   // the VB-Cable speaker that feeds it ("CABLE Input"), or null
     const micHint = $(".mic-route-hint", root);
     const play  = $(".btn-play", root);
     const stop  = $(".btn-stop", root);
@@ -817,8 +805,7 @@
     function updateMicRoute(){
       if(!micEl || !micHint) return;
       micHint.style.color = "";
-      const vbInstalled = !!pickVbCable(lastInputs, lastOutputs).mic;
-      if(!micDev || (!vbInstalled && !userPickedMic)){
+      if(!micDev){
         micHint.innerHTML = 'VB-Cable is not installed. Install it from <a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">vb-audio.com/Cable</a>, restart your browser, then click Rescan.';
         micHint.className = "hint mic-route-hint route-err";
         return;
@@ -828,16 +815,10 @@
         micHint.textContent = "Playing into \u201C"+(match.label||"output")+"\u201D, which feeds this mic. Pick the same device as the input in your call app or System Settings.";
         micHint.className = "hint mic-route-hint route-ok";
       } else {
-        micHint.textContent = "Nothing the page can play into feeds \u201C"+(micDev.label||"this mic")+"\u201D, so the recording plays on your default output and won't reach this mic. Use VB-Cable for the agent.";
+        micHint.textContent = "Found \u201C"+(micDev.label||"VB-Cable")+"\u201D but not its matching CABLE Input output, so the recording plays on your default output. Reinstall VB-Cable, then click Rescan.";
         micHint.className = "hint mic-route-hint route-warn";
       }
     }
-    function selectMic(id){
-      micDev = lastInputs.find(d=>d.deviceId===id) || null;
-      cableOut = outputFeeding(micDev, lastInputs, lastOutputs);
-      updateMicRoute();
-    }
-    if(micEl) micEl.addEventListener("change", ()=>{ userPickedMic = true; selectMic(micEl.value); applySink(); });
 
     // transport
     play.addEventListener("click", async ()=>{
@@ -887,7 +868,6 @@
       if(!list.length){
         s.innerHTML = '<option value="">No '+kind+'s found</option>'; s.disabled = true; return;
       }
-      if(kind==="microphone"){ const o=document.createElement("option"); o.value=""; o.textContent="— VB-Cable not found, pick a microphone —"; o.hidden=true; s.appendChild(o); }
       list.forEach((d,i)=>{
         const o=document.createElement("option");
         o.value=d.deviceId;
@@ -921,14 +901,11 @@
           if(krisp) sel.value = krisp.deviceId;
         }
         if(micEl){
-          lastInputs = inputs;
-          fillSelect(micEl, inputs, "microphone");
-          const vb = pickVbCable(inputs, outputs).mic;
-          if(!userPickedMic || !inputs.some(d=>d.deviceId===micEl.value)){
-            if(vb) micEl.value = vb.deviceId;
-            else if(!userPickedMic) micEl.value = "";        // nothing selected until VB-Cable is installed
-          }
-          selectMic(micEl.value);
+          ({ mic: micDev, out: cableOut } = pickVbCable(inputs, outputs));
+          micEl.textContent = micDev ? micDev.label : "VB-Cable not found";
+          micEl.classList.remove("muted");
+          micEl.classList.toggle("missing", !micDev);
+          updateMicRoute();
         }
         if(!SUPPORTS_SINK){
           if(sel) sel.disabled = true;
@@ -1370,7 +1347,24 @@
       outMeter.attachStream(micOut);
       sync();
     }
+    // After the recordings finish (without VT Delay), keep the mic open briefly, then end the call
+    const END_CALL_MS = 10000;
+    let endTimer = null, endTick = null, endLeft = 0;
+    function cancelEndCall(){
+      if(endTimer){ clearTimeout(endTimer); endTimer = null; }
+      if(endTick){ clearInterval(endTick); endTick = null; }
+      endLeft = 0;
+    }
+    function scheduleEndCall(){
+      if(!micOut || vtActive || A.playing() || C.playing() || endTimer) return;
+      endLeft = END_CALL_MS / 1000;
+      endTick = setInterval(()=>{ endLeft = Math.max(0, endLeft - 1); sync(); }, 1000);
+      endTimer = setTimeout(()=>{ cancelEndCall(); stopMic(); }, END_CALL_MS);
+      sync();
+    }
+
     function stopMic(){
+      cancelEndCall();
       if(micOut) micOut.getTracks().forEach(t=>t.stop());   // release Krisp's processed stream
       if(micRaw){ micRaw.getTracks().forEach(t=>t.stop()); try{ agentSrc.disconnect(micRaw._dest); }catch(e){} }
       micOut = micRaw = null;
@@ -1398,7 +1392,8 @@
       const on = !!micOut, processed = on && micOut !== micRaw;
       micBtn.innerHTML = MIC_SVG + (on ? " Stop mic" : " Start mic");
       micState.className = "mic-state" + (on ? (processed ? " ok" : " warn") : "");
-      micState.textContent = !on ? "Mic off" : processed ? "Mic on · processed by Krisp" : "Mic on · NOT processed by Krisp";
+      micState.textContent = !on ? "Mic off" : (processed ? "Mic on · processed by Krisp" : "Mic on · NOT processed by Krisp")
+        + (endTimer ? " · ending call in " + endLeft + "s" : "");
       hearBtn.disabled = !on;
       A.setEnabled(true);
       C.setEnabled(true);
@@ -1435,6 +1430,10 @@
     }
     A.el.addEventListener("ended", checkTail);
     C.el.addEventListener("ended", checkTail);
+    [A.el, C.el].forEach(el=>{
+      el.addEventListener("ended", ()=>{ if(!vtActive) scheduleEndCall(); });
+      el.addEventListener("play", ()=>{ cancelEndCall(); sync(); });      // playing again keeps the call going
+    });
 
     playBoth.addEventListener("click", async ()=>{
       if(vtTimer){ cancelVT(); stopMic(); return; }                  // pressing during a countdown cancels
